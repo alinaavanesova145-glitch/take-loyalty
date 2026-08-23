@@ -1,426 +1,328 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
+
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>{{ app_name }}</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>TAKE coffee &amp; more — карта лояльности</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            charcoal: '#0F0F12',
+            surface: 'rgba(255,255,255,0.045)',
+            gold: '#E2A85C',
+            coral: '#E87A5D',
+            ink: '#F5F1EA',
+            stone: '#9C978C',
+            stonedim: '#6B675E',
+          },
+          fontFamily: {
+            display: ['"Fraunces"', 'serif'],
+            sans: ['"Inter"', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+    }
 
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+    html,
+    body {
+      background: #0F0F12;
+    }
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    body {
+      overscroll-behavior-y: none;
+    }
 
-<style>
-  :root {
-    /* Brand tokens — overridden at runtime by Telegram theme params where sensible */
-    --take-espresso: #2B1B12;
-    --take-espresso-2: #3D281A;
-    --take-milk: #FAF6EF;
-    --take-paper: #F1E9DC;
-    --take-gold: #C68B3D;
-    --take-gold-soft: #E4B872;
-    --take-forest: #2F4A3C;
-    --take-rust: #A6543A;
-    --take-ink: #241811;
-    --take-ink-soft: #6B5A4A;
+    .glass {
+      background: rgba(255, 255, 255, 0.045);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
 
-    --bg: var(--take-milk);
-    --surface: #ffffff;
-    --text: var(--take-ink);
-    --text-soft: var(--take-ink-soft);
-    --hairline: rgba(36, 24, 17, 0.12);
-  }
+    .num-tabular {
+      font-variant-numeric: tabular-nums;
+    }
 
-  [data-theme="dark"] {
-    --bg: var(--take-espresso);
-    --surface: var(--take-espresso-2);
-    --text: var(--take-milk);
-    --text-soft: #C9B9A8;
-    --hairline: rgba(250, 246, 239, 0.14);
-  }
+    /* Card flip */
+    .flip-scene {
+      perspective: 1600px;
+    }
 
-  * { box-sizing: border-box; }
+    .flip-card {
+      transform-style: preserve-3d;
+      transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+    }
 
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'IBM Plex Mono', ui-monospace, monospace;
-    -webkit-font-smoothing: antialiased;
-    transition: background 0.3s ease, color 0.3s ease;
-    min-height: 100vh;
-    padding-bottom: 48px;
-  }
+    .flip-card.flipped {
+      transform: rotateY(180deg);
+    }
 
-  .display {
-    font-family: 'Fraunces', Georgia, serif;
-    font-optical-sizing: auto;
-  }
+    .flip-face {
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
 
-  .wrap {
-    max-width: 480px;
-    margin: 0 auto;
-    padding: 20px 18px 12px;
-  }
+    .flip-back {
+      transform: rotateY(180deg);
+    }
 
-  .eyebrow {
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--take-gold);
-    font-weight: 600;
-  }
+    /* QR glow pulse */
+    @keyframes qrPulse {
 
-  .brand-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin-bottom: 18px;
-  }
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 rgba(226, 168, 92, 0.35), 0 0 24px 2px rgba(226, 168, 92, 0.18);
+      }
 
-  .brand-title {
-    font-size: 20px;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-  }
+      50% {
+        box-shadow: 0 0 0 8px rgba(226, 168, 92, 0), 0 0 36px 8px rgba(226, 168, 92, 0.32);
+      }
+    }
 
-  /* ---- Signature element: the "ticket & stamp" loyalty card ---- */
-  .ticket {
-    position: relative;
-    background: var(--surface);
-    border-radius: 20px;
-    padding: 28px 24px 22px;
-    box-shadow: 0 1px 0 var(--hairline), 0 12px 32px rgba(0,0,0,0.10);
-    overflow: visible;
-  }
+    .qr-pulse {
+      animation: qrPulse 2.6s ease-in-out infinite;
+    }
 
-  .ticket::before,
-  .ticket::after {
-    content: "";
-    position: absolute;
-    width: 22px;
-    height: 22px;
-    background: var(--bg);
-    border-radius: 50%;
-    top: 50%;
-    transform: translateY(-50%);
-  }
-  .ticket::before { left: -11px; }
-  .ticket::after { right: -11px; }
+    @media (prefers-reduced-motion: reduce) {
+      .qr-pulse {
+        animation: none;
+      }
 
-  .perforation {
-    border-top: 2px dashed var(--hairline);
-    margin: 20px -4px 18px;
-  }
+      .flip-card {
+        transition: none;
+      }
+    }
 
-  .stamp {
-    width: 108px;
-    height: 108px;
-    border-radius: 50%;
-    border: 2.5px solid var(--take-gold);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 14px;
-    position: relative;
-    background:
-      radial-gradient(circle at 50% 40%, rgba(198,139,61,0.14), transparent 70%);
-  }
-  .stamp::before {
-    content: "";
-    position: absolute;
-    inset: 6px;
-    border-radius: 50%;
-    border: 1px dashed rgba(198,139,61,0.55);
-  }
-  .stamp-value {
-    font-family: 'Fraunces', serif;
-    font-weight: 600;
-    font-size: 26px;
-    line-height: 1;
-  }
-  .stamp-unit {
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    color: var(--text-soft);
-    margin-top: 4px;
-  }
+    /* Sliding tab indicator */
+    #tab-indicator {
+      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
 
-  .balance-label {
-    text-align: center;
-    font-size: 12px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--text-soft);
-    margin-bottom: 4px;
-  }
+    /* Bean progress glow */
+    .bean-filled {
+      filter: drop-shadow(0 0 6px rgba(226, 168, 92, 0.65));
+    }
 
-  .qr-frame {
-    display: flex;
-    justify-content: center;
-    padding: 14px;
-    background: #fff;
-    border-radius: 14px;
-    margin: 4px auto 0;
-    width: fit-content;
-  }
-  .qr-frame canvas { display: block; border-radius: 4px; }
-
-  .scan-hint {
-    text-align: center;
-    font-size: 11px;
-    color: var(--text-soft);
-    margin-top: 10px;
-    letter-spacing: 0.02em;
-  }
-
-  .rate-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--take-forest);
-    background: rgba(47,74,60,0.10);
-    border-radius: 999px;
-    padding: 5px 10px;
-    font-weight: 600;
-  }
-  [data-theme="dark"] .rate-tag {
-    color: #8FCBAA;
-    background: rgba(143,203,170,0.12);
-  }
-
-  .section-title {
-    font-family: 'Fraunces', serif;
-    font-size: 15px;
-    font-weight: 600;
-    margin: 28px 0 10px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .history-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 0;
-    border-bottom: 1px solid var(--hairline);
-    font-size: 13px;
-  }
-  .history-item:last-child { border-bottom: none; }
-
-  .history-meta { color: var(--text-soft); font-size: 11px; margin-top: 2px; }
-
-  .history-amount.earn { color: var(--take-forest); font-weight: 600; }
-  [data-theme="dark"] .history-amount.earn { color: #8FCBAA; }
-  .history-amount.redeem { color: var(--take-rust); font-weight: 600; }
-
-  .empty-state {
-    text-align: center;
-    padding: 24px 0;
-    color: var(--text-soft);
-    font-size: 13px;
-  }
-
-  .skeleton {
-    background: linear-gradient(90deg, var(--hairline) 25%, transparent 37%, var(--hairline) 63%);
-    background-size: 400% 100%;
-    animation: shimmer 1.4s ease infinite;
-    border-radius: 8px;
-  }
-  @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
-
-  .error-banner {
-    background: rgba(166,84,58,0.12);
-    color: var(--take-rust);
-    border-radius: 12px;
-    padding: 12px 14px;
-    font-size: 12px;
-    margin-top: 14px;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .skeleton { animation: none; }
-  }
-</style>
+    ::-webkit-scrollbar {
+      display: none;
+    }
+  </style>
 </head>
-<body>
-<div id="app-root" class="wrap" x-data="loyaltyApp()" x-init="init()" :data-theme="theme">
 
-  <div class="brand-row">
-    <div>
-      <div class="eyebrow">Loyalty Card</div>
-      <div class="brand-title display">{{ app_name }}</div>
+<body class="bg-charcoal text-ink font-sans antialiased min-h-screen">
+
+  <div id="app" class="max-w-md mx-auto min-h-screen px-4 pt-6 pb-10">
+
+    <!-- Header -->
+    <header class="flex items-center justify-between mb-6">
+      <div>
+        <p class="font-display text-2xl leading-none tracking-tight">TAKE</p>
+        <p class="text-[11px] uppercase tracking-[0.18em] text-stone mt-1">coffee &amp; more</p>
+      </div>
+      <div id="level-badge" class="glass rounded-full px-3.5 py-1.5 flex items-center gap-1.5">
+        <i data-lucide="award" class="w-3.5 h-3.5 text-gold"></i>
+        <span id="level-label" class="text-xs font-medium text-ink">—</span>
+      </div>
+    </header>
+
+    <!-- Hero balance card -->
+    <section class="glass rounded-3xl p-6 mb-5">
+      <p class="text-xs uppercase tracking-[0.14em] text-stone mb-2">баланс баллов</p>
+      <div class="flex items-baseline gap-2 mb-5">
+        <span id="balance-value" class="font-display text-5xl num-tabular">—</span>
+        <span class="text-stone text-sm mb-1">баллов</span>
+      </div>
+
+      <div class="flex items-center justify-between mb-2.5">
+        <p id="progress-caption" class="text-xs text-stone">&nbsp;</p>
+        <p id="progress-count" class="text-xs text-gold font-medium num-tabular">&nbsp;</p>
+      </div>
+      <div id="bean-row" class="flex items-center gap-1.5"></div>
+    </section>
+
+    <!-- Tab switcher -->
+    <div class="relative glass rounded-full p-1 flex mb-5">
+      <div id="tab-indicator" class="absolute inset-y-1 left-1 w-[calc(50%-4px)] bg-gold/90 rounded-full"></div>
+      <button data-tab="card" onclick="setTab('card')"
+        class="tab-btn relative z-10 flex-1 py-2.5 text-sm font-medium rounded-full transition-colors">
+        Карта / QR
+      </button>
+      <button data-tab="history" onclick="setTab('history')"
+        class="tab-btn relative z-10 flex-1 py-2.5 text-sm font-medium rounded-full transition-colors">
+        История
+      </button>
     </div>
-    <span class="rate-tag">3% back</span>
+
+    <!-- Panel: Card / QR -->
+    <section id="panel-card" class="flex flex-col items-center">
+      <div class="flip-scene w-full mb-4" style="height: 200px;">
+        <div id="flip-card" class="flip-card relative w-full h-full cursor-pointer" onclick="flipCard()">
+          <div class="flip-face absolute inset-0 glass rounded-2xl p-5 flex flex-col justify-between">
+            <div class="flex items-start justify-between">
+              <p class="font-display text-lg">TAKE</p>
+              <i data-lucide="coffee" class="w-5 h-5 text-gold"></i>
+            </div>
+            <div>
+              <p id="card-name" class="text-base font-medium">—</p>
+              <p class="text-xs text-stone mt-0.5">Нажмите, чтобы показать QR</p>
+            </div>
+          </div>
+          <div
+            class="flip-face flip-back absolute inset-0 glass rounded-2xl p-5 flex flex-col items-center justify-center gap-3">
+            <div id="qrcode" class="qr-pulse bg-ink rounded-xl p-2.5"></div>
+            <p class="text-[11px] text-stone">Покажите бариста на кассе</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Panel: History -->
+    <section id="panel-history" class="hidden">
+      <div id="tx-list" class="space-y-2"></div>
+      <p id="tx-empty" class="hidden text-center text-sm text-stone py-10">Пока нет операций</p>
+    </section>
+
   </div>
 
-  <template x-if="loading">
-    <div class="ticket">
-      <div class="balance-label">Loading your card…</div>
-      <div class="skeleton" style="width:108px;height:108px;border-radius:50%;margin:0 auto 14px;"></div>
-      <div class="perforation"></div>
-      <div class="skeleton" style="width:100%;height:180px;"></div>
-    </div>
-  </template>
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      tg.setHeaderColor?.('#0F0F12');
+      tg.setBackgroundColor?.('#0F0F12');
+    }
+    function haptic(style = 'light') {
+      tg?.HapticFeedback?.impactOccurred(style);
+    }
 
-  <template x-if="!loading && error">
-    <div class="error-banner" x-text="error"></div>
-  </template>
+    const REWARD_THRESHOLD = 8; // покупок до бесплатного напитка
 
-  <template x-if="!loading && !error && user">
-    <div>
-      <div class="ticket">
-        <div class="balance-label">Hi <span x-text="user.first_name"></span> — your balance</div>
-        <div class="stamp">
-          <div class="stamp-value" x-text="formatAmd(user.bonus_balance)"></div>
-          <div class="stamp-unit">AMD ֏</div>
-        </div>
+    // Демо-данные — используются только если API недоступен (просмотр вне Telegram)
+    const DEMO_DATA = {
+      user: { first_name: 'Гоар', bonus_balance: 1250, cashback_percent: 5, level: 'Gold', progress_count: 5 },
+      transactions: [
+        { type: 'ACCUMULATE', branch: 'Tumanyan 38', sum_amd: 2400, bonus_change: 120, timestamp: '2026-08-22T09:14:00' },
+        { type: 'DEDUCT', branch: 'Abovyan City', sum_amd: 0, bonus_change: -400, timestamp: '2026-08-19T17:02:00' },
+        { type: 'ACCUMULATE', branch: 'Tumanyan 38', sum_amd: 1800, bonus_change: 90, timestamp: '2026-08-17T08:41:00' },
+        { type: 'ACCUMULATE', branch: 'Komitas Ave', sum_amd: 3200, bonus_change: 160, timestamp: '2026-08-12T13:20:00' },
+      ],
+    };
 
-        <div class="perforation"></div>
+    function render(data) {
+      const u = data.user;
+      document.getElementById('balance-value').textContent = u.bonus_balance.toLocaleString('ru-RU');
+      document.getElementById('level-label').textContent = u.level;
+      document.getElementById('card-name').textContent = u.first_name;
 
-        <div class="qr-frame">
-          <canvas id="qr-canvas"></canvas>
-        </div>
-        <div class="scan-hint">Show this to the barista to earn or redeem</div>
-      </div>
+      const filled = Math.min(u.progress_count, REWARD_THRESHOLD);
+      const remaining = REWARD_THRESHOLD - filled;
+      document.getElementById('progress-caption').textContent =
+        remaining > 0 ? `ещё ${remaining} до бесплатного кофе` : 'бесплатный кофе доступен';
+      document.getElementById('progress-count').textContent = `${filled}/${REWARD_THRESHOLD}`;
 
-      <div class="section-title">
-        <span>Recent activity</span>
-        <span style="font-size:11px;font-weight:400;color:var(--text-soft);" x-text="branchName"></span>
-      </div>
+      const beanRow = document.getElementById('bean-row');
+      beanRow.innerHTML = '';
+      for (let i = 1; i <= REWARD_THRESHOLD; i++) {
+        const on = i <= filled;
+        const bean = document.createElement('div');
+        bean.className = `h-2.5 flex-1 rounded-full ${on ? 'bg-gold bean-filled' : 'bg-white/10'}`;
+        beanRow.appendChild(bean);
+      }
 
-      <div class="ticket" style="padding-top:6px;padding-bottom:6px;">
-        <template x-if="history.length === 0">
-          <div class="empty-state">No transactions yet — your first cup starts your bonus history.</div>
-        </template>
-        <template x-for="tx in history" :key="tx.id">
-          <div class="history-item">
-            <div>
-              <div x-text="tx.type === 'EARN' ? 'Earned bonus' : 'Redeemed bonus'"></div>
-              <div class="history-meta" x-text="formatDate(tx.created_at) + ' · bill ' + formatAmd(tx.bill_amount) + ' ֏'"></div>
+      const list = document.getElementById('tx-list');
+      const empty = document.getElementById('tx-empty');
+      list.innerHTML = '';
+      if (!data.transactions.length) {
+        empty.classList.remove('hidden');
+      } else {
+        empty.classList.add('hidden');
+        data.transactions.forEach((tx) => {
+          const isAdd = tx.type === 'ACCUMULATE';
+          const date = new Date(tx.timestamp).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+          const row = document.createElement('div');
+          row.className = 'glass rounded-2xl px-4 py-3 flex items-center justify-between';
+          row.innerHTML = `
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-full flex items-center justify-center ${isAdd ? 'bg-gold/15' : 'bg-coral/15'}">
+              <i data-lucide="${isAdd ? 'plus' : 'minus'}" class="w-4 h-4 ${isAdd ? 'text-gold' : 'text-coral'}"></i>
             </div>
-            <div :class="'history-amount ' + (tx.type === 'EARN' ? 'earn' : 'redeem')"
-                 x-text="(tx.bonus_change > 0 ? '+' : '') + formatAmd(tx.bonus_change) + ' ֏'"></div>
+            <div>
+              <p class="text-sm font-medium">${tx.branch}</p>
+              <p class="text-xs text-stonedim">${date}</p>
+            </div>
           </div>
-        </template>
-      </div>
-    </div>
-  </template>
-</div>
-
-<script>
-function loyaltyApp() {
-  return {
-    loading: true,
-    error: null,
-    user: null,
-    branchName: '',
-    qrPayload: null,
-    history: [],
-    theme: 'light',
-    pollTimer: null,
-
-    async init() {
-      const tg = window.Telegram && window.Telegram.WebApp;
-      if (tg) {
-        tg.ready();
-        tg.expand();
-        this.applyTheme(tg);
-        tg.onEvent('themeChanged', () => this.applyTheme(tg));
-      }
-
-      const initData = tg ? tg.initData : '';
-
-      try {
-        const res = await fetch('/api/auth', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ init_data: initData }),
+          <p class="text-sm font-medium num-tabular ${isAdd ? 'text-gold' : 'text-coral'}">
+            ${isAdd ? '+' : ''}${tx.bonus_change}
+          </p>`;
+          list.appendChild(row);
         });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.detail || 'Could not verify your Telegram session.');
-        }
-        const data = await res.json();
-        this.user = data.user;
-        this.branchName = data.branch.name;
-        this.qrPayload = data.qr_payload;
-        this.loading = false;
-
-        this.$nextTick(() => this.renderQR());
-        this.loadHistory();
-        this.startPolling();
-      } catch (err) {
-        this.loading = false;
-        this.error = err.message || 'Something went wrong loading your card.';
       }
-    },
 
-    applyTheme(tg) {
-      this.theme = tg.colorScheme === 'dark' ? 'dark' : 'light';
-      const root = document.getElementById('app-root');
-      if (root) root.setAttribute('data-theme', this.theme);
-    },
-
-    renderQR() {
-      const canvas = document.getElementById('qr-canvas');
-      if (!canvas || !this.qrPayload || !window.QRCode) return;
-      window.QRCode.toCanvas(canvas, this.qrPayload, {
-        width: 200,
-        margin: 1,
-        color: { dark: '#241811', light: '#ffffff' },
+      // QR-код — платёжный идентификатор клиента для эндпоинта /api/transaction/scan
+      document.getElementById('qrcode').innerHTML = '';
+      new QRCode(document.getElementById('qrcode'), {
+        text: `TAKE:${data.telegram_id || 'demo'}`,
+        width: 176,
+        height: 176,
+        colorDark: '#0F0F12',
+        colorLight: '#F5F1EA',
+        correctLevel: QRCode.CorrectLevel.M,
       });
-    },
 
-    async loadHistory() {
-      if (!this.user) return;
+      lucide.createIcons();
+    }
+
+    function setTab(tab) {
+      haptic('light');
+      document.getElementById('panel-card').classList.toggle('hidden', tab !== 'card');
+      document.getElementById('panel-history').classList.toggle('hidden', tab !== 'history');
+      document.getElementById('tab-indicator').style.transform = tab === 'history' ? 'translateX(100%)' : 'translateX(0)';
+      document.querySelectorAll('.tab-btn').forEach((btn) => {
+        btn.classList.toggle('text-charcoal', btn.dataset.tab === tab);
+        btn.classList.toggle('text-stone', btn.dataset.tab !== tab);
+      });
+    }
+
+    function flipCard() {
+      haptic('medium');
+      document.getElementById('flip-card').classList.toggle('flipped');
+    }
+
+    async function init() {
+      setTab('card');
+      const telegramId = tg?.initDataUnsafe?.user?.id;
       try {
-        const res = await fetch(`/api/me/${this.user.telegram_id}/history?limit=15`);
-        if (res.ok) {
-          this.history = await res.json();
-        }
-      } catch (_) {
-        // History is a nice-to-have; a failure here shouldn't block the card.
+        if (!telegramId) throw new Error('no telegram context');
+        const res = await fetch(`/api/user/${telegramId}`);
+        if (!res.ok) throw new Error('api error');
+        const payload = await res.json();
+        render({ ...payload, telegram_id: telegramId });
+      } catch (e) {
+        // Просмотр вне Telegram или бэкенд недоступен — показываем демо-данные
+        render({ ...DEMO_DATA, telegram_id: 'demo' });
       }
-    },
+    }
 
-    async refreshBalance() {
-      if (!this.user) return;
-      try {
-        const res = await fetch(`/api/me/${this.user.telegram_id}`);
-        if (res.ok) {
-          const fresh = await res.json();
-          this.user.bonus_balance = fresh.bonus_balance;
-        }
-      } catch (_) { /* ignore transient polling errors */ }
-    },
-
-    startPolling() {
-      this.pollTimer = setInterval(() => {
-        this.refreshBalance();
-        this.loadHistory();
-      }, 15000);
-    },
-
-    formatAmd(n) {
-      return new Intl.NumberFormat('en-US').format(n);
-    },
-
-    formatDate(iso) {
-      const d = new Date(iso);
-      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' +
-             d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    },
-  };
-}
-</script>
+    init();
+  </script>
 </body>
+
 </html>
