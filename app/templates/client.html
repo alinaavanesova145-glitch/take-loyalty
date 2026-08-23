@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>{{ app_name }}</title>
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    /* Brand tokens — overridden at runtime by Telegram theme params where sensible */
+    --take-espresso: #2B1B12;
+    --take-espresso-2: #3D281A;
+    --take-milk: #FAF6EF;
+    --take-paper: #F1E9DC;
+    --take-gold: #C68B3D;
+    --take-gold-soft: #E4B872;
+    --take-forest: #2F4A3C;
+    --take-rust: #A6543A;
+    --take-ink: #241811;
+    --take-ink-soft: #6B5A4A;
+
+    --bg: var(--take-milk);
+    --surface: #ffffff;
+    --text: var(--take-ink);
+    --text-soft: var(--take-ink-soft);
+    --hairline: rgba(36, 24, 17, 0.12);
+  }
+
+  [data-theme="dark"] {
+    --bg: var(--take-espresso);
+    --surface: var(--take-espresso-2);
+    --text: var(--take-milk);
+    --text-soft: #C9B9A8;
+    --hairline: rgba(250, 246, 239, 0.14);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    -webkit-font-smoothing: antialiased;
+    transition: background 0.3s ease, color 0.3s ease;
+    min-height: 100vh;
+    padding-bottom: 48px;
+  }
+
+  .display {
+    font-family: 'Fraunces', Georgia, serif;
+    font-optical-sizing: auto;
+  }
+
+  .wrap {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 20px 18px 12px;
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--take-gold);
+    font-weight: 600;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+
+  .brand-title {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  /* ---- Signature element: the "ticket & stamp" loyalty card ---- */
+  .ticket {
+    position: relative;
+    background: var(--surface);
+    border-radius: 20px;
+    padding: 28px 24px 22px;
+    box-shadow: 0 1px 0 var(--hairline), 0 12px 32px rgba(0,0,0,0.10);
+    overflow: visible;
+  }
+
+  .ticket::before,
+  .ticket::after {
+    content: "";
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    background: var(--bg);
+    border-radius: 50%;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .ticket::before { left: -11px; }
+  .ticket::after { right: -11px; }
+
+  .perforation {
+    border-top: 2px dashed var(--hairline);
+    margin: 20px -4px 18px;
+  }
+
+  .stamp {
+    width: 108px;
+    height: 108px;
+    border-radius: 50%;
+    border: 2.5px solid var(--take-gold);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 14px;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(198,139,61,0.14), transparent 70%);
+  }
+  .stamp::before {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    border-radius: 50%;
+    border: 1px dashed rgba(198,139,61,0.55);
+  }
+  .stamp-value {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 26px;
+    line-height: 1;
+  }
+  .stamp-unit {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--text-soft);
+    margin-top: 4px;
+  }
+
+  .balance-label {
+    text-align: center;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+    margin-bottom: 4px;
+  }
+
+  .qr-frame {
+    display: flex;
+    justify-content: center;
+    padding: 14px;
+    background: #fff;
+    border-radius: 14px;
+    margin: 4px auto 0;
+    width: fit-content;
+  }
+  .qr-frame canvas { display: block; border-radius: 4px; }
+
+  .scan-hint {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-soft);
+    margin-top: 10px;
+    letter-spacing: 0.02em;
+  }
+
+  .rate-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--take-forest);
+    background: rgba(47,74,60,0.10);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-weight: 600;
+  }
+  [data-theme="dark"] .rate-tag {
+    color: #8FCBAA;
+    background: rgba(143,203,170,0.12);
+  }
+
+  .section-title {
+    font-family: 'Fraunces', serif;
+    font-size: 15px;
+    font-weight: 600;
+    margin: 28px 0 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--hairline);
+    font-size: 13px;
+  }
+  .history-item:last-child { border-bottom: none; }
+
+  .history-meta { color: var(--text-soft); font-size: 11px; margin-top: 2px; }
+
+  .history-amount.earn { color: var(--take-forest); font-weight: 600; }
+  [data-theme="dark"] .history-amount.earn { color: #8FCBAA; }
+  .history-amount.redeem { color: var(--take-rust); font-weight: 600; }
+
+  .empty-state {
+    text-align: center;
+    padding: 24px 0;
+    color: var(--text-soft);
+    font-size: 13px;
+  }
+
+  .skeleton {
+    background: linear-gradient(90deg, var(--hairline) 25%, transparent 37%, var(--hairline) 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+    border-radius: 8px;
+  }
+  @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+  .error-banner {
+    background: rgba(166,84,58,0.12);
+    color: var(--take-rust);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 12px;
+    margin-top: 14px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app-root" class="wrap" x-data="loyaltyApp()" x-init="init()" :data-theme="theme">
+
+  <div class="brand-row">
+    <div>
+      <div class="eyebrow">Loyalty Card</div>
+      <div class="brand-title display">{{ app_name }}</div>
+    </div>
+    <span class="rate-tag">3% back</span>
+  </div>
+
+  <template x-if="loading">
+    <div class="ticket">
+      <div class="balance-label">Loading your card…</div>
+      <div class="skeleton" style="width:108px;height:108px;border-radius:50%;margin:0 auto 14px;"></div>
+      <div class="perforation"></div>
+      <div class="skeleton" style="width:100%;height:180px;"></div>
+    </div>
+  </template>
+
+  <template x-if="!loading && error">
+    <div class="error-banner" x-text="error"></div>
+  </template>
+
+  <template x-if="!loading && !error && user">
+    <div>
+      <div class="ticket">
+        <div class="balance-label">Hi <span x-text="user.first_name"></span> — your balance</div>
+        <div class="stamp">
+          <div class="stamp-value" x-text="formatAmd(user.bonus_balance)"></div>
+          <div class="stamp-unit">AMD ֏</div>
+        </div>
+
+        <div class="perforation"></div>
+
+        <div class="qr-frame">
+          <canvas id="qr-canvas"></canvas>
+        </div>
+        <div class="scan-hint">Show this to the barista to earn or redeem</div>
+      </div>
+
+      <div class="section-title">
+        <span>Recent activity</span>
+        <span style="font-size:11px;font-weight:400;color:var(--text-soft);" x-text="branchName"></span>
+      </div>
+
+      <div class="ticket" style="padding-top:6px;padding-bottom:6px;">
+        <template x-if="history.length === 0">
+          <div class="empty-state">No transactions yet — your first cup starts your bonus history.</div>
+        </template>
+        <template x-for="tx in history" :key="tx.id">
+          <div class="history-item">
+            <div>
+              <div x-text="tx.type === 'EARN' ? 'Earned bonus' : 'Redeemed bonus'"></div>
+              <div class="history-meta" x-text="formatDate(tx.created_at) + ' · bill ' + formatAmd(tx.bill_amount) + ' ֏'"></div>
+            </div>
+            <div :class="'history-amount ' + (tx.type === 'EARN' ? 'earn' : 'redeem')"
+                 x-text="(tx.bonus_change > 0 ? '+' : '') + formatAmd(tx.bonus_change) + ' ֏'"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </template>
+</div>
+
+<script>
+function loyaltyApp() {
+  return {
+    loading: true,
+    error: null,
+    user: null,
+    branchName: '',
+    qrPayload: null,
+    history: [],
+    theme: 'light',
+    pollTimer: null,
+
+    async init() {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      if (tg) {
+        tg.ready();
+        tg.expand();
+        this.applyTheme(tg);
+        tg.onEvent('themeChanged', () => this.applyTheme(tg));
+      }
+
+      const initData = tg ? tg.initData : '';
+
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ init_data: initData }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.detail || 'Could not verify your Telegram session.');
+        }
+        const data = await res.json();
+        this.user = data.user;
+        this.branchName = data.branch.name;
+        this.qrPayload = data.qr_payload;
+        this.loading = false;
+
+        this.$nextTick(() => this.renderQR());
+        this.loadHistory();
+        this.startPolling();
+      } catch (err) {
+        this.loading = false;
+        this.error = err.message || 'Something went wrong loading your card.';
+      }
+    },
+
+    applyTheme(tg) {
+      this.theme = tg.colorScheme === 'dark' ? 'dark' : 'light';
+      const root = document.getElementById('app-root');
+      if (root) root.setAttribute('data-theme', this.theme);
+    },
+
+    renderQR() {
+      const canvas = document.getElementById('qr-canvas');
+      if (!canvas || !this.qrPayload || !window.QRCode) return;
+      window.QRCode.toCanvas(canvas, this.qrPayload, {
+        width: 200,
+        margin: 1,
+        color: { dark: '#241811', light: '#ffffff' },
+      });
+    },
+
+    async loadHistory() {
+      if (!this.user) return;
+      try {
+        const res = await fetch(`/api/me/${this.user.telegram_id}/history?limit=15`);
+        if (res.ok) {
+          this.history = await res.json();
+        }
+      } catch (_) {
+        // History is a nice-to-have; a failure here shouldn't block the card.
+      }
+    },
+
+    async refreshBalance() {
+      if (!this.user) return;
+      try {
+        const res = await fetch(`/api/me/${this.user.telegram_id}`);
+        if (res.ok) {
+          const fresh = await res.json();
+          this.user.bonus_balance = fresh.bonus_balance;
+        }
+      } catch (_) { /* ignore transient polling errors */ }
+    },
+
+    startPolling() {
+      this.pollTimer = setInterval(() => {
+        this.refreshBalance();
+        this.loadHistory();
+      }, 15000);
+    },
+
+    formatAmd(n) {
+      return new Intl.NumberFormat('en-US').format(n);
+    },
+
+    formatDate(iso) {
+      const d = new Date(iso);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' +
+             d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    },
+  };
+}
+</script>
+</body>
+</html>

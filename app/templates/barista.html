@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>{{ app_name }} — Barista</title>
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --take-espresso: #201410;
+    --take-espresso-2: #2E1D16;
+    --take-gold: #C68B3D;
+    --take-gold-soft: #E4B872;
+    --take-forest: #2F4A3C;
+    --take-forest-bright: #5FAE83;
+    --take-rust: #B85C3F;
+    --take-milk: #FAF6EF;
+    --hairline: rgba(250, 246, 239, 0.14);
+    --bg: var(--take-espresso);
+    --surface: var(--take-espresso-2);
+    --text: var(--take-milk);
+    --text-soft: #C9B9A8;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    min-height: 100vh;
+  }
+
+  .display { font-family: 'Fraunces', Georgia, serif; }
+
+  .wrap { max-width: 480px; margin: 0 auto; padding: 18px 16px 40px; }
+
+  .topbar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--take-gold);
+    font-weight: 600;
+  }
+  .title { font-size: 19px; font-weight: 600; }
+
+  .logout-btn {
+    background: none;
+    border: 1px solid var(--hairline);
+    color: var(--text-soft);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 8px;
+  }
+
+  /* ---- PIN gate ---- */
+  .pin-panel { text-align: center; padding-top: 10vh; }
+  .pin-dots { display: flex; justify-content: center; gap: 12px; margin: 22px 0 30px; }
+  .pin-dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--take-gold-soft);
+    background: transparent;
+    transition: background 0.15s ease;
+  }
+  .pin-dot.filled { background: var(--take-gold); }
+
+  .keypad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    max-width: 280px;
+    margin: 0 auto;
+  }
+  .key {
+    aspect-ratio: 1;
+    border-radius: 16px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    color: var(--text);
+    font-size: 22px;
+    font-family: 'Fraunces', serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .key:active { background: rgba(198,139,61,0.18); }
+  .key.ghost { background: transparent; border: none; }
+  .key.action { color: var(--take-gold); font-size: 14px; }
+
+  .pin-error {
+    color: var(--take-rust);
+    font-size: 12px;
+    margin-bottom: 14px;
+    min-height: 16px;
+  }
+
+  /* ---- Scanner ---- */
+  .scan-card {
+    position: relative;
+    border-radius: 20px;
+    overflow: hidden;
+    background: #000;
+    aspect-ratio: 1;
+    border: 1px solid var(--hairline);
+  }
+  #qr-reader { width: 100%; height: 100%; }
+  #qr-reader video { object-fit: cover; }
+
+  .frame-guide {
+    position: absolute;
+    inset: 14%;
+    border: 2px solid var(--take-gold);
+    border-radius: 18px;
+    pointer-events: none;
+    box-shadow: 0 0 0 999px rgba(0,0,0,0.35);
+  }
+  .frame-guide::before,
+  .frame-guide::after { display: none; }
+
+  .scan-status {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-soft);
+    margin: 12px 0 4px;
+    letter-spacing: 0.02em;
+  }
+
+  .manual-toggle {
+    display: block;
+    margin: 14px auto 0;
+    background: none;
+    border: none;
+    color: var(--take-gold-soft);
+    font-size: 12px;
+    text-decoration: underline;
+    font-family: inherit;
+  }
+
+  .manual-row { display: flex; gap: 8px; margin-top: 10px; }
+  .manual-row input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+  }
+
+  .btn {
+    font-family: inherit;
+    border: none;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .btn-gold { background: var(--take-gold); color: #201410; }
+  .btn-outline { background: transparent; border: 1px solid var(--hairline); color: var(--text); }
+
+  /* ---- Modal ---- */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55);
+    display: flex; align-items: flex-end;
+    z-index: 40;
+  }
+  .modal-sheet {
+    width: 100%;
+    background: var(--surface);
+    border-radius: 24px 24px 0 0;
+    padding: 22px 20px calc(24px + env(safe-area-inset-bottom));
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .modal-handle {
+    width: 40px; height: 4px; background: var(--hairline);
+    border-radius: 999px; margin: 0 auto 16px;
+  }
+
+  .customer-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .customer-name { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 600; }
+  .customer-balance { font-size: 13px; color: var(--text-soft); margin-bottom: 18px; }
+
+  .field-label {
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-soft); margin-bottom: 6px;
+  }
+  .amount-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    padding: 14px 16px;
+    font-size: 24px;
+    font-family: 'Fraunces', serif;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+  .amount-input:focus { outline: 2px solid var(--take-gold); }
+
+  .action-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .action-btn {
+    border-radius: 14px;
+    padding: 16px 10px;
+    font-family: inherit;
+    border: none;
+    text-align: left;
+  }
+  .action-btn .a-title { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+  .action-btn .a-sub { font-size: 11px; opacity: 0.85; }
+  .action-earn { background: var(--take-forest); color: #E9F5EE; }
+  .action-redeem { background: var(--take-rust); color: #FFF1EA; }
+  .action-btn:disabled { opacity: 0.4; }
+
+  .close-row { text-align: center; margin-top: 14px; }
+  .close-link { background: none; border: none; color: var(--text-soft); font-size: 12px; font-family: inherit; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--take-forest);
+    color: #E9F5EE;
+    padding: 12px 18px;
+    border-radius: 12px;
+    font-size: 13px;
+    max-width: 90%;
+    text-align: center;
+    z-index: 60;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+  .toast.error { background: var(--take-rust); color: #FFF1EA; }
+
+  .redeem-hint { font-size: 11px; color: var(--text-soft); margin: -10px 0 16px; }
+</style>
+</head>
+<body>
+<div class="wrap" x-data="baristaApp()" x-init="init()">
+
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">Barista Console</div>
+      <div class="title display">{{ app_name }}</div>
+    </div>
+    <button class="logout-btn" x-show="sessionToken" @click="logout()">Lock</button>
+  </div>
+
+  <!-- ===== PIN gate ===== -->
+  <template x-if="!sessionToken">
+    <div class="pin-panel">
+      <div style="font-size:13px;color:var(--text-soft);">Enter staff PIN to unlock scanner</div>
+      <div class="pin-dots">
+        <template x-for="i in 4" :key="i">
+          <div class="pin-dot" :class="{ filled: pin.length >= i }"></div>
+        </template>
+      </div>
+      <div class="pin-error" x-text="pinError"></div>
+      <div class="keypad">
+        <template x-for="n in [1,2,3,4,5,6,7,8,9]" :key="n">
+          <button class="key" @click="pressKey(n)" x-text="n"></button>
+        </template>
+        <div class="key ghost"></div>
+        <button class="key" @click="pressKey(0)">0</button>
+        <button class="key ghost action" @click="backspace()">⌫</button>
+      </div>
+    </div>
+  </template>
+
+  <!-- ===== Scanner ===== -->
+  <template x-if="sessionToken">
+    <div>
+      <div class="scan-card">
+        <div id="qr-reader"></div>
+        <div class="frame-guide"></div>
+      </div>
+      <div class="scan-status" x-text="scanStatus"></div>
+      <button class="manual-toggle" @click="showManual = !showManual" x-text="showManual ? 'Hide manual entry' : 'Camera not working? Enter code manually'"></button>
+
+      <template x-if="showManual">
+        <div class="manual-row">
+          <input type="text" x-model="manualCode" placeholder="Paste QR payload" />
+          <button class="btn btn-gold" @click="handleScan(manualCode)">Go</button>
+        </div>
+      </template>
+    </div>
+  </template>
+
+  <!-- ===== Customer action modal ===== -->
+  <template x-if="customer">
+    <div class="modal-backdrop" @click.self="closeModal()">
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+
+        <div class="customer-row">
+          <div class="customer-name" x-text="customer.first_name"></div>
+        </div>
+        <div class="customer-balance">Current balance: <span x-text="formatAmd(customer.bonus_balance)"></span> ֏</div>
+
+        <div class="field-label">Order amount (AMD)</div>
+        <input class="amount-input" type="number" inputmode="numeric" min="1"
+               x-model.number="billAmount" placeholder="0" />
+
+        <template x-if="billAmount > 0">
+          <div class="redeem-hint">
+            Max redeemable now: <span x-text="formatAmd(Math.min(customer.bonus_balance, billAmount))"></span> ֏
+          </div>
+        </template>
+
+        <div class="action-grid">
+          <button class="action-btn action-earn" :disabled="!billAmount || billAmount <= 0 || submitting"
+                  @click="earn()">
+            <div class="a-title">Earn 3%</div>
+            <div class="a-sub" x-text="billAmount > 0 ? ('+' + formatAmd(Math.floor(billAmount * 0.03)) + ' ֏') : 'Enter amount'"></div>
+          </button>
+          <button class="action-btn action-redeem" :disabled="!billAmount || billAmount <= 0 || customer.bonus_balance <= 0 || submitting"
+                  @click="openRedeem()">
+            <div class="a-title">Redeem bonus</div>
+            <div class="a-sub" x-text="'Balance ' + formatAmd(customer.bonus_balance) + ' ֏'"></div>
+          </button>
+        </div>
+
+        <template x-if="redeeming">
+          <div style="margin-top:14px;">
+            <div class="field-label">Redeem amount (AMD)</div>
+            <input class="amount-input" type="number" inputmode="numeric" min="1"
+                   :max="Math.min(customer.bonus_balance, billAmount)"
+                   x-model.number="redeemAmount" placeholder="0" />
+            <button class="btn btn-gold" style="width:100%;" :disabled="submitting" @click="confirmRedeem()">
+              Confirm redeem
+            </button>
+          </div>
+        </template>
+
+        <div class="close-row">
+          <button class="close-link" @click="closeModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template x-if="toast">
+    <div class="toast" :class="{ error: toastIsError }" x-text="toast"></div>
+  </template>
+</div>
+
+<script>
+function baristaApp() {
+  return {
+    // PIN gate
+    pin: '',
+    pinError: '',
+    sessionToken: sessionStorage.getItem('take_barista_token') || null,
+
+    // Scanner
+    scanner: null,
+    scanStatus: 'Point the camera at the customer\'s QR code',
+    showManual: false,
+    manualCode: '',
+
+    // Modal / transaction
+    customer: null,
+    billAmount: null,
+    redeeming: false,
+    redeemAmount: null,
+    submitting: false,
+
+    // Toast
+    toast: null,
+    toastIsError: false,
+    toastTimer: null,
+
+    init() {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      if (tg) { tg.ready(); tg.expand(); }
+      if (this.sessionToken) {
+        this.$nextTick(() => this.startScanner());
+      }
+    },
+
+    // ---------- PIN pad ----------
+    pressKey(n) {
+      if (this.pin.length >= 4) return;
+      this.pin += String(n);
+      this.pinError = '';
+      if (this.pin.length === 4) this.submitPin();
+    },
+    backspace() {
+      this.pin = this.pin.slice(0, -1);
+    },
+    async submitPin() {
+      try {
+        const res = await fetch('/api/barista/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: this.pin }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          this.pinError = 'Incorrect PIN, try again';
+          this.pin = '';
+          return;
+        }
+        this.sessionToken = data.session_token;
+        sessionStorage.setItem('take_barista_token', this.sessionToken);
+        this.pin = '';
+        this.$nextTick(() => this.startScanner());
+      } catch (err) {
+        this.pinError = 'Network error — try again';
+        this.pin = '';
+      }
+    },
+    logout() {
+      this.sessionToken = null;
+      sessionStorage.removeItem('take_barista_token');
+      if (this.scanner) {
+        this.scanner.stop().catch(() => {});
+        this.scanner = null;
+      }
+    },
+
+    // ---------- Scanner ----------
+    startScanner() {
+      const readerEl = document.getElementById('qr-reader');
+      if (!readerEl || this.scanner) return;
+
+      this.scanner = new Html5Qrcode('qr-reader');
+      const config = { fps: 10, qrbox: { width: 220, height: 220 } };
+
+      this.scanner
+        .start({ facingMode: 'environment' }, config,
+          (decodedText) => this.handleScan(decodedText),
+          () => { /* per-frame scan failures are expected — ignore */ }
+        )
+        .catch(() => {
+          this.scanStatus = 'Camera unavailable — use manual entry below';
+          this.showManual = true;
+        });
+    },
+
+    async handleScan(payload) {
+      if (!payload || this.customer) return; // ignore while a modal is open
+      this.scanStatus = 'Verifying customer…';
+      try {
+        const res = await fetch('/api/barista/verify-qr', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + this.sessionToken,
+          },
+          body: JSON.stringify({ qr_payload: payload }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          this.showToast(data.detail || 'Could not verify this code', true);
+          this.scanStatus = 'Point the camera at the customer\'s QR code';
+          return;
+        }
+        this.customer = data.user;
+        this.billAmount = null;
+        this.manualCode = '';
+      } catch (err) {
+        this.showToast('Network error verifying code', true);
+      }
+    },
+
+    // ---------- Earn / Redeem ----------
+    async earn() {
+      if (!this.customer || !this.billAmount) return;
+      this.submitting = true;
+      try {
+        const res = await fetch('/api/barista/earn', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + this.sessionToken,
+          },
+          body: JSON.stringify({
+            telegram_id: this.customer.telegram_id,
+            bill_amount: this.billAmount,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          this.showToast(data.detail || 'Could not record transaction', true);
+          return;
+        }
+        this.showToast(data.message, false);
+        this.closeModal();
+      } catch (err) {
+        this.showToast('Network error — transaction not saved', true);
+      } finally {
+        this.submitting = false;
+      }
+    },
+
+    openRedeem() {
+      this.redeeming = true;
+      this.redeemAmount = Math.min(this.customer.bonus_balance, this.billAmount || 0);
+    },
+
+    async confirmRedeem() {
+      if (!this.customer || !this.billAmount || !this.redeemAmount) return;
+      this.submitting = true;
+      try {
+        const res = await fetch('/api/barista/redeem', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + this.sessionToken,
+          },
+          body: JSON.stringify({
+            telegram_id: this.customer.telegram_id,
+            bill_amount: this.billAmount,
+            redeem_amount: this.redeemAmount,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          this.showToast(data.detail || 'Could not redeem bonus', true);
+          return;
+        }
+        this.showToast(data.message, false);
+        this.closeModal();
+      } catch (err) {
+        this.showToast('Network error — redeem not saved', true);
+      } finally {
+        this.submitting = false;
+      }
+    },
+
+    closeModal() {
+      this.customer = null;
+      this.billAmount = null;
+      this.redeeming = false;
+      this.redeemAmount = null;
+      this.scanStatus = 'Point the camera at the customer\'s QR code';
+    },
+
+    // ---------- Utilities ----------
+    formatAmd(n) {
+      return new Intl.NumberFormat('en-US').format(n || 0);
+    },
+
+    showToast(msg, isError) {
+      this.toast = msg;
+      this.toastIsError = !!isError;
+      if (this.toastTimer) clearTimeout(this.toastTimer);
+      this.toastTimer = setTimeout(() => { this.toast = null; }, 3500);
+    },
+  };
+}
+</script>
+</body>
+</html>
