@@ -24,6 +24,10 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s", level=logging.INFO
 )
+# httpx logs full request URLs at INFO, which includes the bot token
+# (https://api.telegram.org/bot<TOKEN>/...) — keep it quiet enough not to
+# leak that into `docker compose logs`.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("take_bot")
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]

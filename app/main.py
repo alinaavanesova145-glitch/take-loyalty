@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import os
 import secrets
+import time
 from collections.abc import AsyncGenerator
 from datetime import datetime, timedelta, timezone
 
@@ -192,6 +193,39 @@ def hash_pin(pin: str) -> str:
     return hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
 
 
+# --------------------------------------------------------------------------
+# Barista login rate limiting (in-memory, single-instance deploy)
+# --------------------------------------------------------------------------
+# Rolling window: 5 failed attempts from the same source within 5 minutes
+# locks that source out of the endpoint entirely (correct PIN included)
+# until enough of the failures age out of the window.
+
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_WINDOW_SECONDS = 300
+
+_login_failures: dict[str, list[float]] = {}
+
+
+def _client_ip(request: Request) -> str:
+    # Caddy (the only thing that can reach uvicorn) sets X-Forwarded-For.
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _login_locked_out(ip: str) -> bool:
+    now = time.time()
+    attempts = _login_failures.get(ip, [])
+    attempts = [t for t in attempts if now - t < LOGIN_WINDOW_SECONDS]
+    _login_failures[ip] = attempts
+    return len(attempts) >= LOGIN_MAX_ATTEMPTS
+
+
+def _record_login_failure(ip: str) -> None:
+    _login_failures.setdefault(ip, []).append(time.time())
+
+
 async def get_or_create_user(
     db: AsyncSession, telegram_id: int, first_name: str | None = None
 ) -> User:
@@ -252,13 +286,23 @@ async def get_user(
 
 
 @app.post("/api/barista/login", response_model=BaristaLoginOut)
-async def barista_login(payload: BaristaLoginIn, db: AsyncSession = Depends(get_db)):
+async def barista_login(
+    payload: BaristaLoginIn, request: Request, db: AsyncSession = Depends(get_db)
+):
+    ip = _client_ip(request)
+    if _login_locked_out(ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed PIN attempts. Try again in a few minutes.",
+        )
+
     pin_hash = hash_pin(payload.pin)
     result = await db.execute(
         select(Employee).where(Employee.pin_code_hash == pin_hash, Employee.is_active.is_(True))
     )
     employee = result.scalar_one_or_none()
     if not employee:
+        _record_login_failure(ip)
         raise HTTPException(status_code=401, detail="Incorrect PIN")
 
     branch = await db.get(Branch, employee.branch_id)
