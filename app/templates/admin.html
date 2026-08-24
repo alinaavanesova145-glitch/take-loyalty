@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en" data-app-name="{{ app_name | default('TAKE coffee&more') }}">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TAKE coffee&more — Admin</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+
+  <style>
+    body { background: #0F0F12; }
+  </style>
+</head>
+
+<body class="bg-[#0F0F12] text-[#F5F1EA] font-sans antialiased min-h-screen">
+  <div id="app" class="max-w-lg mx-auto min-h-screen px-4 pt-8 pb-10" x-data="adminApp()" x-init="init()">
+
+    <header class="mb-6">
+      <p class="text-[11px] uppercase tracking-[0.18em] text-[#E2A85C] font-medium mb-1">Admin</p>
+      <p class="text-2xl leading-none tracking-tight" x-text="appName">TAKE coffee&more</p>
+    </header>
+
+    <!-- ===== PIN gate ===== -->
+    <template x-if="!sessionToken">
+      <section class="text-center pt-14">
+        <p class="text-sm text-[#9C978C] mb-6">Enter admin PIN</p>
+
+        <div class="flex justify-center gap-3 mb-2">
+          <template x-for="i in 4" :key="i">
+            <div class="w-3.5 h-3.5 rounded-full border-2 transition-colors duration-150"
+              :class="pin.length >= i ? 'bg-[#E2A85C] border-[#E2A85C]' : 'border-[#9C978C]/40 bg-transparent'"></div>
+          </template>
+        </div>
+        <p class="text-[#E87A5D] text-xs min-h-[16px] mb-6" x-text="pinError"></p>
+
+        <div class="grid grid-cols-3 gap-3 max-w-[280px] mx-auto">
+          <template x-for="n in [1,2,3,4,5,6,7,8,9]" :key="n">
+            <button @click="pressKey(n)"
+              class="bg-white/[0.045] border border-white/[0.09] aspect-square rounded-2xl text-2xl flex items-center justify-center active:bg-[#E2A85C]/15 transition-colors"
+              x-text="n"></button>
+          </template>
+          <div></div>
+          <button @click="pressKey(0)"
+            class="bg-white/[0.045] border border-white/[0.09] aspect-square rounded-2xl text-2xl flex items-center justify-center active:bg-[#E2A85C]/15 transition-colors">0</button>
+          <button @click="backspace()"
+            class="aspect-square rounded-2xl flex items-center justify-center text-[#E2A85C]">⌫</button>
+        </div>
+      </section>
+    </template>
+
+    <!-- ===== Stats ===== -->
+    <template x-if="sessionToken">
+      <section>
+        <template x-if="loading">
+          <p class="text-sm text-[#9C978C]">Loading…</p>
+        </template>
+
+        <template x-if="loadError">
+          <div class="bg-[#E87A5D]/10 border border-[#E87A5D]/30 rounded-2xl p-4 mb-4">
+            <p class="text-sm text-[#E87A5D]" x-text="loadError"></p>
+          </div>
+        </template>
+
+        <template x-if="stats">
+          <div>
+            <div class="grid grid-cols-2 gap-3 mb-6">
+              <div class="bg-white/[0.045] border border-white/[0.09] rounded-2xl p-4">
+                <p class="text-[11px] uppercase tracking-wide text-[#9C978C] mb-1">Total customers</p>
+                <p class="text-2xl font-medium" x-text="stats.total_customers"></p>
+              </div>
+              <div class="bg-white/[0.045] border border-white/[0.09] rounded-2xl p-4">
+                <p class="text-[11px] uppercase tracking-wide text-[#9C978C] mb-1">Cups sold</p>
+                <p class="text-2xl font-medium" x-text="stats.total_cups_sold"></p>
+              </div>
+              <div class="bg-white/[0.045] border border-white/[0.09] rounded-2xl p-4">
+                <p class="text-[11px] uppercase tracking-wide text-[#9C978C] mb-1">Free coffees redeemed</p>
+                <p class="text-2xl font-medium" x-text="stats.total_coffees_redeemed"></p>
+              </div>
+              <div class="bg-white/[0.045] border border-white/[0.09] rounded-2xl p-4">
+                <p class="text-[11px] uppercase tracking-wide text-[#9C978C] mb-1">Points outstanding</p>
+                <p class="text-2xl font-medium" x-text="stats.points_outstanding"></p>
+                <p class="text-[10px] text-[#9C978C] mt-1">balance owed across all customers</p>
+              </div>
+            </div>
+
+            <p class="text-[11px] uppercase tracking-wide text-[#9C978C] mb-2">Last 7 days</p>
+            <div class="bg-white/[0.045] border border-white/[0.09] rounded-2xl overflow-hidden mb-2">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-white/[0.09] text-[#9C978C] text-xs">
+                    <th class="text-left font-normal px-4 py-2">Date</th>
+                    <th class="text-right font-normal px-4 py-2">Cups sold</th>
+                    <th class="text-right font-normal px-4 py-2">Redeemed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="day in stats.last_7_days" :key="day.date">
+                    <tr class="border-b border-white/[0.05] last:border-0">
+                      <td class="px-4 py-2" x-text="day.date"></td>
+                      <td class="px-4 py-2 text-right" x-text="day.cups_sold"></td>
+                      <td class="px-4 py-2 text-right" x-text="day.coffees_redeemed"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-[10px] text-[#9C978C]">Volume only — this points model doesn't capture bill amounts, so there's no revenue figure here.</p>
+          </div>
+        </template>
+
+        <button @click="logout()" class="block mt-6 text-xs text-[#9C978C] underline underline-offset-2">Lock</button>
+      </section>
+    </template>
+
+  </div>
+
+  <script>
+    {% raw %}
+    function adminApp() {
+      return {
+        pin: '',
+        pinError: '',
+        sessionToken: sessionStorage.getItem('take_admin_token') || null,
+        stats: null,
+        loading: false,
+        loadError: '',
+        appName: 'TAKE coffee&more',
+
+        init() {
+          const raw = document.documentElement.dataset.appName || '';
+          if (raw && !raw.includes('{{')) this.appName = raw;
+          document.title = this.appName + ' — Admin';
+          if (this.sessionToken) this.loadStats();
+        },
+
+        pressKey(n) {
+          if (this.pin.length >= 4) return;
+          this.pin += String(n);
+          this.pinError = '';
+          if (this.pin.length === 4) this.submitPin();
+        },
+        backspace() {
+          this.pin = this.pin.slice(0, -1);
+        },
+
+        async submitPin() {
+          try {
+            const res = await fetch('/api/barista/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pin: this.pin }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+              this.pinError = res.status === 429
+                ? (data.detail || 'Too many attempts — try again later')
+                : 'Incorrect PIN, try again';
+              this.pin = '';
+              return;
+            }
+            this.sessionToken = data.session_token;
+            sessionStorage.setItem('take_admin_token', this.sessionToken);
+            this.pin = '';
+            this.loadStats();
+          } catch (err) {
+            this.pinError = 'Network error — try again';
+            this.pin = '';
+          }
+        },
+
+        async loadStats() {
+          this.loading = true;
+          this.loadError = '';
+          try {
+            const res = await fetch('/api/admin/stats', {
+              headers: { 'Authorization': 'Bearer ' + this.sessionToken },
+            });
+            const data = await res.json();
+            if (res.status === 403) {
+              this.logout('This PIN is valid but not an admin PIN — access denied.');
+              return;
+            }
+            if (!res.ok) {
+              this.logout(data.detail || 'Could not load stats.');
+              return;
+            }
+            this.stats = data;
+          } catch (err) {
+            this.loadError = 'Network error loading stats.';
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        logout(message) {
+          this.sessionToken = null;
+          this.stats = null;
+          sessionStorage.removeItem('take_admin_token');
+          this.pin = '';
+          this.pinError = message || '';
+        },
+      };
+    }
+    {% endraw %}
+  </script>
+</body>
+
+</html>

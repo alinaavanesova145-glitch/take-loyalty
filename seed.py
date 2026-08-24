@@ -25,9 +25,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.config import settings
 from app.models import Base, Branch, Employee, EmployeeRole, User
 
-DEFAULT_BRANCH_NAME = "Tumanyan 38"
-DEFAULT_BRANCH_ADDRESS = "Tumanyan 38, Yerevan"
+DEFAULT_BRANCH_NAME = "Aivazovsky park"
+DEFAULT_BRANCH_ADDRESS = "Aivazovsky park, Yerevan"
 DEFAULT_BARISTA_NAME = "Barista"
+DEFAULT_ADMIN_NAME = "Admin"
 
 
 def hash_pin(pin: str) -> str:
@@ -97,6 +98,33 @@ async def seed() -> None:
                 print(f"– Barista employee already exists: {employee.name}")
         else:
             print("⚠ BARISTA_PIN is not configured in the environment settings!")
+
+        # Seed admin employee (same branch, different PIN, role=ADMIN) —
+        # gives access to GET /api/admin/stats, nothing else changes.
+        admin_pin = settings.ADMIN_PIN
+        if admin_pin:
+            admin_pin_hash = hash_pin(admin_pin)
+            result = await db.execute(
+                select(Employee).where(
+                    Employee.branch_id == branch.id, Employee.pin_code_hash == admin_pin_hash
+                )
+            )
+            admin_employee = result.scalar_one_or_none()
+            if admin_employee is None:
+                admin_employee = Employee(
+                    name=DEFAULT_ADMIN_NAME,
+                    branch_id=branch.id,
+                    pin_code_hash=admin_pin_hash,
+                    role=EmployeeRole.ADMIN,
+                    is_active=True,
+                )
+                db.add(admin_employee)
+                await db.commit()
+                print(f"✓ Created admin employee: {admin_employee.name} (PIN length: {len(admin_pin)})")
+            else:
+                print(f"– Admin employee already exists: {admin_employee.name}")
+        else:
+            print("⚠ ADMIN_PIN is not configured in the environment settings!")
 
     await engine.dispose()
     print(f"\nDone. Log into barista.html with PIN: {settings.BARISTA_PIN}")

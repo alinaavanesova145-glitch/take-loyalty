@@ -28,10 +28,19 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.models import Base, Branch, Employee, EmployeeSession, Transaction, TransactionType, User
+from app.models import (
+    Base,
+    Branch,
+    Employee,
+    EmployeeRole,
+    EmployeeSession,
+    Transaction,
+    TransactionType,
+    User,
+)
 
 # --------------------------------------------------------------------------
 # Config
@@ -93,6 +102,13 @@ async def customer_app(request: Request):
 async def barista_app(request: Request):
     return templates.TemplateResponse(
         request=request, name="barista.html", context={"app_name": APP_NAME}
+    )
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_app(request: Request):
+    return templates.TemplateResponse(
+        request=request, name="admin.html", context={"app_name": APP_NAME}
     )
 
 
@@ -181,6 +197,27 @@ class TransactionOut(BaseModel):
     user: UserStateOut
 
 
+class TransactionRecord(BaseModel):
+    type: str
+    points_change: int
+    timestamp: datetime
+    branch_name: str
+
+
+class AdminDayStat(BaseModel):
+    date: str
+    cups_sold: int
+    coffees_redeemed: int
+
+
+class AdminStatsOut(BaseModel):
+    total_customers: int
+    total_cups_sold: int
+    total_coffees_redeemed: int
+    points_outstanding: int
+    last_7_days: list[AdminDayStat]
+
+
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
@@ -267,6 +304,15 @@ async def get_current_employee(
     return employee
 
 
+async def get_current_admin(employee: Employee = Depends(get_current_employee)) -> Employee:
+    """Same session as get_current_employee, plus a role check. A valid
+    barista session is 403'd here, not 401 — they authenticated fine, they
+    just aren't authorized for admin-only data."""
+    if employee.role != EmployeeRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return employee
+
+
 # --------------------------------------------------------------------------
 # Customer-facing endpoints
 # --------------------------------------------------------------------------
@@ -278,6 +324,33 @@ async def get_user(
 ):
     user = await get_or_create_user(db, telegram_id, first_name)
     return user_state(user)
+
+
+@app.get("/api/user/{telegram_id}/transactions", response_model=list[TransactionRecord])
+async def get_user_transactions(
+    telegram_id: int, limit: int = 50, db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(User).where(User.telegram_id == telegram_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        return []
+
+    result = await db.execute(
+        select(Transaction, Branch.name)
+        .join(Branch, Transaction.branch_id == Branch.id)
+        .where(Transaction.user_id == user.id)
+        .order_by(Transaction.timestamp.desc())
+        .limit(limit)
+    )
+    return [
+        TransactionRecord(
+            type=tx.type.value,
+            points_change=tx.points_change,
+            timestamp=tx.timestamp,
+            branch_name=branch_name,
+        )
+        for tx, branch_name in result.all()
+    ]
 
 
 # --------------------------------------------------------------------------
@@ -422,3 +495,78 @@ async def redeem(
     await db.refresh(user)
 
     return TransactionOut(message="Free coffee redeemed!", user=user_state(user))
+
+
+# --------------------------------------------------------------------------
+# Admin endpoints
+# --------------------------------------------------------------------------
+
+
+@app.get("/api/admin/stats", response_model=AdminStatsOut)
+async def admin_stats(
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    total_customers = (await db.execute(select(func.count(User.id)))).scalar_one()
+
+    cups_points_sum = (
+        await db.execute(
+            select(func.sum(Transaction.points_change)).where(
+                Transaction.type == TransactionType.ACCUMULATE
+            )
+        )
+    ).scalar_one_or_none() or 0
+    total_cups_sold = cups_points_sum // POINTS_PER_CUP
+
+    total_coffees_redeemed = (
+        await db.execute(
+            select(func.count(Transaction.id)).where(Transaction.type == TransactionType.DEDUCT)
+        )
+    ).scalar_one()
+
+    points_outstanding = (
+        await db.execute(select(func.sum(User.points_balance)))
+    ).scalar_one_or_none() or 0
+
+    # Day-by-day breakdown, last 7 days (UTC calendar days — timestamps are
+    # naive UTC throughout this app, same as everywhere else).
+    today = datetime.now(timezone.utc).date()
+    since = datetime.combine(today - timedelta(days=6), datetime.min.time())
+
+    daily_result = await db.execute(
+        select(
+            func.date(Transaction.timestamp).label("day"),
+            Transaction.type,
+            func.sum(Transaction.points_change).label("points_sum"),
+            func.count(Transaction.id).label("cnt"),
+        )
+        .where(Transaction.timestamp >= since)
+        .group_by(func.date(Transaction.timestamp), Transaction.type)
+    )
+
+    day_stats: dict[str, dict[str, int]] = {
+        (today - timedelta(days=i)).isoformat(): {"cups_sold": 0, "coffees_redeemed": 0}
+        for i in range(7)
+    }
+    for row in daily_result:
+        day_value = row.day
+        day_key = day_value.isoformat() if hasattr(day_value, "isoformat") else str(day_value)
+        if day_key not in day_stats:
+            continue
+        if row.type == TransactionType.ACCUMULATE:
+            day_stats[day_key]["cups_sold"] = int(row.points_sum or 0) // POINTS_PER_CUP
+        elif row.type == TransactionType.DEDUCT:
+            day_stats[day_key]["coffees_redeemed"] = row.cnt
+
+    last_7_days = [
+        AdminDayStat(date=d, cups_sold=v["cups_sold"], coffees_redeemed=v["coffees_redeemed"])
+        for d, v in sorted(day_stats.items())
+    ]
+
+    return AdminStatsOut(
+        total_customers=total_customers,
+        total_cups_sold=total_cups_sold,
+        total_coffees_redeemed=total_coffees_redeemed,
+        points_outstanding=points_outstanding,
+        last_7_days=last_7_days,
+    )

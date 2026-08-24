@@ -348,7 +348,16 @@
         const res = await fetch(`/api/user/${telegramId}?first_name=${encodeURIComponent(firstName)}`);
         if (!res.ok) throw new Error('api error');
         const state = await res.json();
-        render({ ...state, telegram_id: telegramId, transactions: [] });
+
+        // History fetch is best-effort — a failure here shouldn't blank
+        // out the whole card view, just leave history empty.
+        let transactions = [];
+        try {
+          const txRes = await fetch(`/api/user/${telegramId}/transactions`);
+          if (txRes.ok) transactions = await txRes.json();
+        } catch (txErr) { /* leave transactions empty */ }
+
+        render({ ...state, telegram_id: telegramId, transactions });
       } catch (e) {
         render({ ...DEMO_DATA, first_name: firstName, telegram_id: telegramId || 'demo' });
       }

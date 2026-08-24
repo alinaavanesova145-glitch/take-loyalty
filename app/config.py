@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # rather than declaring fields nothing reads.
     DATABASE_URL: str
     BARISTA_PIN: str = "1234"
+    ADMIN_PIN: str = "9999"
 
     model_config = SettingsConfigDict(
         env_file=".env",
