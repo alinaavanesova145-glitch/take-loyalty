@@ -46,7 +46,7 @@ POINTS_PER_CUP = 100
 REWARD_THRESHOLD = 800  # points needed for one free coffee (8 cups)
 SESSION_TTL_HOURS = 12
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 
