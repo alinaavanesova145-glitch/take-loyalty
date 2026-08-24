@@ -50,7 +50,7 @@ def get_settings() -> Settings:
     environment) is parsed exactly once per process, and every call site
     that does `get_settings()` shares the same Settings instance.
     """
-    return Settings()
+    return Settings()  # type: ignore[call-arg]  # fields are populated from env/.env at runtime
 
 
 settings = get_settings()

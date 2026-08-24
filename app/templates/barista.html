@@ -1,577 +1,490 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-app-name="{{ app_name | default('TAKE coffee&more') }}">
+
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>{{ app_name }} — Barista</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>TAKE coffee&more — Barista</title>
 
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
 
-<style>
-  :root {
-    --take-espresso: #201410;
-    --take-espresso-2: #2E1D16;
-    --take-gold: #C68B3D;
-    --take-gold-soft: #E4B872;
-    --take-forest: #2F4A3C;
-    --take-forest-bright: #5FAE83;
-    --take-rust: #B85C3F;
-    --take-milk: #FAF6EF;
-    --hairline: rgba(250, 246, 239, 0.14);
-    --bg: var(--take-espresso);
-    --surface: var(--take-espresso-2);
-    --text: var(--take-milk);
-    --text-soft: #C9B9A8;
-  }
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            charcoal: '#0F0F12',
+            surface: 'rgba(255,255,255,0.045)',
+            gold: '#E2A85C',
+            coral: '#E87A5D',
+            ink: '#F5F1EA',
+            stone: '#9C978C',
+            stonedim: '#6B675E',
+          },
+          fontFamily: {
+            display: ['"Fraunces"', 'serif'],
+            sans: ['"Inter"', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
 
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+    }
 
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'IBM Plex Mono', ui-monospace, monospace;
-    min-height: 100vh;
-  }
+    html,
+    body {
+      background: #0F0F12;
+    }
 
-  .display { font-family: 'Fraunces', Georgia, serif; }
+    body {
+      overscroll-behavior-y: none;
+    }
 
-  .wrap { max-width: 480px; margin: 0 auto; padding: 18px 16px 40px; }
+    .glass {
+      background: rgba(255, 255, 255, 0.045);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
 
-  .topbar {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin-bottom: 16px;
-  }
-  .eyebrow {
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--take-gold);
-    font-weight: 600;
-  }
-  .title { font-size: 19px; font-weight: 600; }
+    .num-tabular {
+      font-variant-numeric: tabular-nums;
+    }
 
-  .logout-btn {
-    background: none;
-    border: 1px solid var(--hairline);
-    color: var(--text-soft);
-    font-family: inherit;
-    font-size: 11px;
-    padding: 6px 10px;
-    border-radius: 8px;
-  }
+    #qr-reader video {
+      object-fit: cover;
+    }
 
-  /* ---- PIN gate ---- */
-  .pin-panel { text-align: center; padding-top: 10vh; }
-  .pin-dots { display: flex; justify-content: center; gap: 12px; margin: 22px 0 30px; }
-  .pin-dot {
-    width: 14px; height: 14px; border-radius: 50%;
-    border: 2px solid var(--take-gold-soft);
-    background: transparent;
-    transition: background 0.15s ease;
-  }
-  .pin-dot.filled { background: var(--take-gold); }
+    /* Scanner target frame — gold glow pulse, matches QR glow on client.html */
+    @keyframes framePulse {
 
-  .keypad {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    max-width: 280px;
-    margin: 0 auto;
-  }
-  .key {
-    aspect-ratio: 1;
-    border-radius: 16px;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    color: var(--text);
-    font-size: 22px;
-    font-family: 'Fraunces', serif;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .key:active { background: rgba(198,139,61,0.18); }
-  .key.ghost { background: transparent; border: none; }
-  .key.action { color: var(--take-gold); font-size: 14px; }
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 rgba(226, 168, 92, 0.35), 0 0 24px 2px rgba(226, 168, 92, 0.18), 0 0 0 999px rgba(0, 0, 0, 0.35);
+      }
 
-  .pin-error {
-    color: var(--take-rust);
-    font-size: 12px;
-    margin-bottom: 14px;
-    min-height: 16px;
-  }
+      50% {
+        box-shadow: 0 0 0 8px rgba(226, 168, 92, 0), 0 0 36px 8px rgba(226, 168, 92, 0.32), 0 0 0 999px rgba(0, 0, 0, 0.35);
+      }
+    }
 
-  /* ---- Scanner ---- */
-  .scan-card {
-    position: relative;
-    border-radius: 20px;
-    overflow: hidden;
-    background: #000;
-    aspect-ratio: 1;
-    border: 1px solid var(--hairline);
-  }
-  #qr-reader { width: 100%; height: 100%; }
-  #qr-reader video { object-fit: cover; }
+    .scan-frame {
+      animation: framePulse 2.6s ease-in-out infinite;
+    }
 
-  .frame-guide {
-    position: absolute;
-    inset: 14%;
-    border: 2px solid var(--take-gold);
-    border-radius: 18px;
-    pointer-events: none;
-    box-shadow: 0 0 0 999px rgba(0,0,0,0.35);
-  }
-  .frame-guide::before,
-  .frame-guide::after { display: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .scan-frame {
+        animation: none;
+        box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.35);
+      }
+    }
 
-  .scan-status {
-    text-align: center;
-    font-size: 12px;
-    color: var(--text-soft);
-    margin: 12px 0 4px;
-    letter-spacing: 0.02em;
-  }
-
-  .manual-toggle {
-    display: block;
-    margin: 14px auto 0;
-    background: none;
-    border: none;
-    color: var(--take-gold-soft);
-    font-size: 12px;
-    text-decoration: underline;
-    font-family: inherit;
-  }
-
-  .manual-row { display: flex; gap: 8px; margin-top: 10px; }
-  .manual-row input {
-    flex: 1;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: 10px;
-    padding: 10px 12px;
-    color: var(--text);
-    font-family: inherit;
-    font-size: 13px;
-  }
-
-  .btn {
-    font-family: inherit;
-    border: none;
-    border-radius: 12px;
-    padding: 12px 16px;
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .btn-gold { background: var(--take-gold); color: #201410; }
-  .btn-outline { background: transparent; border: 1px solid var(--hairline); color: var(--text); }
-
-  /* ---- Modal ---- */
-  .modal-backdrop {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.55);
-    display: flex; align-items: flex-end;
-    z-index: 40;
-  }
-  .modal-sheet {
-    width: 100%;
-    background: var(--surface);
-    border-radius: 24px 24px 0 0;
-    padding: 22px 20px calc(24px + env(safe-area-inset-bottom));
-    max-width: 480px;
-    margin: 0 auto;
-  }
-  .modal-handle {
-    width: 40px; height: 4px; background: var(--hairline);
-    border-radius: 999px; margin: 0 auto 16px;
-  }
-
-  .customer-row {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 4px;
-  }
-  .customer-name { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 600; }
-  .customer-balance { font-size: 13px; color: var(--text-soft); margin-bottom: 18px; }
-
-  .field-label {
-    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--text-soft); margin-bottom: 6px;
-  }
-  .amount-input {
-    width: 100%;
-    background: var(--bg);
-    border: 1px solid var(--hairline);
-    border-radius: 14px;
-    padding: 14px 16px;
-    font-size: 24px;
-    font-family: 'Fraunces', serif;
-    color: var(--text);
-    margin-bottom: 16px;
-  }
-  .amount-input:focus { outline: 2px solid var(--take-gold); }
-
-  .action-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-  .action-btn {
-    border-radius: 14px;
-    padding: 16px 10px;
-    font-family: inherit;
-    border: none;
-    text-align: left;
-  }
-  .action-btn .a-title { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
-  .action-btn .a-sub { font-size: 11px; opacity: 0.85; }
-  .action-earn { background: var(--take-forest); color: #E9F5EE; }
-  .action-redeem { background: var(--take-rust); color: #FFF1EA; }
-  .action-btn:disabled { opacity: 0.4; }
-
-  .close-row { text-align: center; margin-top: 14px; }
-  .close-link { background: none; border: none; color: var(--text-soft); font-size: 12px; font-family: inherit; }
-
-  .toast {
-    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-    background: var(--take-forest);
-    color: #E9F5EE;
-    padding: 12px 18px;
-    border-radius: 12px;
-    font-size: 13px;
-    max-width: 90%;
-    text-align: center;
-    z-index: 60;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-  }
-  .toast.error { background: var(--take-rust); color: #FFF1EA; }
-
-  .redeem-hint { font-size: 11px; color: var(--text-soft); margin: -10px 0 16px; }
-</style>
+    ::-webkit-scrollbar {
+      display: none;
+    }
+  </style>
 </head>
-<body>
-<div class="wrap" x-data="baristaApp()" x-init="init()">
 
-  <div class="topbar">
-    <div>
-      <div class="eyebrow">Barista Console</div>
-      <div class="title display">{{ app_name }}</div>
-    </div>
-    <button class="logout-btn" x-show="sessionToken" @click="logout()">Lock</button>
+<body class="bg-charcoal text-ink font-sans antialiased min-h-screen">
+  <div id="app" class="max-w-md mx-auto min-h-screen px-4 pt-6 pb-10" x-data="baristaApp()" x-init="init()">
+
+    <!-- Header -->
+    <header class="flex items-center justify-between mb-6">
+      <div>
+        <p class="text-[11px] uppercase tracking-[0.18em] text-gold font-medium mb-1">Barista console</p>
+        <p class="font-display text-2xl leading-none tracking-tight" x-text="appName">TAKE coffee&more</p>
+      </div>
+      <button x-show="sessionToken" @click="haptic('light'); logout()"
+        class="glass rounded-full px-3.5 py-1.5 flex items-center gap-1.5 text-stone text-xs">
+        <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+        <span>Lock</span>
+      </button>
+    </header>
+
+    <!-- ===== PIN gate ===== -->
+    <template x-if="!sessionToken">
+      <section class="text-center pt-14">
+        <p class="text-sm text-stone mb-6">Enter staff PIN to unlock scanner</p>
+
+        <div class="flex justify-center gap-3 mb-2">
+          <template x-for="i in 4" :key="i">
+            <div class="w-3.5 h-3.5 rounded-full border-2 transition-colors duration-150"
+              :class="pin.length >= i ? 'bg-gold border-gold' : 'border-stone/40 bg-transparent'"></div>
+          </template>
+        </div>
+        <p class="text-coral text-xs min-h-[16px] mb-6" x-text="pinError"></p>
+
+        <div class="grid grid-cols-3 gap-3 max-w-[280px] mx-auto">
+          <template x-for="n in [1,2,3,4,5,6,7,8,9]" :key="n">
+            <button @click="haptic('light'); pressKey(n)"
+              class="glass aspect-square rounded-2xl font-display text-2xl flex items-center justify-center active:bg-gold/15 transition-colors"
+              x-text="n"></button>
+          </template>
+          <div></div>
+          <button @click="haptic('light'); pressKey(0)"
+            class="glass aspect-square rounded-2xl font-display text-2xl flex items-center justify-center active:bg-gold/15 transition-colors">0</button>
+          <button @click="haptic('light'); backspace()"
+            class="aspect-square rounded-2xl flex items-center justify-center text-gold">
+            <i data-lucide="delete" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </section>
+    </template>
+
+    <!-- ===== Scanner ===== -->
+    <template x-if="sessionToken">
+      <section>
+        <div class="relative rounded-3xl overflow-hidden bg-black aspect-square border border-white/[0.09]">
+          <div id="qr-reader" class="w-full h-full"></div>
+          <div class="absolute inset-[14%] rounded-2xl border-2 border-gold pointer-events-none scan-frame"></div>
+        </div>
+        <p class="text-center text-xs text-stone mt-3" x-text="scanStatus"></p>
+        <button @click="haptic('light'); showManual = !showManual"
+          class="block mx-auto mt-3 text-xs text-gold underline underline-offset-2"
+          x-text="showManual ? 'Hide manual entry' : 'Camera not working? Enter code manually'"></button>
+
+        <template x-if="showManual">
+          <div class="flex gap-2 mt-3">
+            <input type="text" x-model="manualCode" placeholder="Paste QR payload"
+              class="flex-1 glass rounded-xl px-3.5 py-2.5 text-sm text-ink placeholder:text-stone/60 focus:outline-none focus:ring-1 focus:ring-gold" />
+            <button @click="haptic('medium'); handleScan(manualCode)"
+              class="bg-gold text-charcoal font-medium text-sm rounded-xl px-4 py-2.5">Go</button>
+          </div>
+        </template>
+      </section>
+    </template>
+
+    <!-- ===== Customer action modal ===== -->
+    <template x-if="customer">
+      <div class="fixed inset-0 bg-black/60 flex items-end z-40" @click.self="closeModal()"
+        x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0">
+        <div class="w-full max-w-md mx-auto glass rounded-t-3xl px-5 pt-5"
+          style="padding-bottom: calc(24px + env(safe-area-inset-bottom));"
+          x-transition:enter="transition ease-out duration-250" x-transition:enter-start="translate-y-8 opacity-0"
+          x-transition:enter-end="translate-y-0 opacity-100" x-transition:leave="transition ease-in duration-150"
+          x-transition:leave-start="translate-y-0 opacity-100" x-transition:leave-end="translate-y-8 opacity-0">
+          <div class="w-10 h-1 bg-white/10 rounded-full mx-auto mb-5"></div>
+
+          <p class="font-display text-lg mb-0.5" x-text="customer.first_name"></p>
+          <p class="text-sm text-stone mb-5">
+            Current balance: <span class="num-tabular" x-text="formatPts(customer.points_balance)"></span> pts
+            <span class="text-stone/70">·</span> <span x-text="customer.tier"></span>
+          </p>
+
+          <p class="text-[11px] uppercase tracking-[0.08em] text-stone mb-1.5">Cups scanned</p>
+          <div class="flex items-center gap-3 mb-1">
+            <button @click="haptic('light'); decrementCups()" :disabled="cups <= 1 || submitting"
+              class="glass w-11 h-11 rounded-2xl flex items-center justify-center text-xl disabled:opacity-30">−</button>
+            <div
+              class="flex-1 bg-charcoal border border-white/[0.09] rounded-2xl py-3 text-center font-display text-2xl num-tabular"
+              x-text="cups"></div>
+            <button @click="haptic('light'); incrementCups()" :disabled="cups >= 20 || submitting"
+              class="glass w-11 h-11 rounded-2xl flex items-center justify-center text-xl disabled:opacity-30">+</button>
+          </div>
+          <p class="text-[11px] text-stone mb-4" x-text="'= +' + (cups * 100) + ' pts'"></p>
+
+          <button :disabled="submitting" @click="haptic('medium'); addPoints()"
+            class="w-full text-left rounded-2xl p-4 bg-gold/15 border border-gold/25 disabled:opacity-40 transition-opacity mb-2.5">
+            <p class="text-sm font-medium text-gold mb-0.5">Add points</p>
+            <p class="text-xs text-stone num-tabular"
+              x-text="'+' + (cups * 100) + ' pts for ' + cups + (cups === 1 ? ' cup' : ' cups')"></p>
+          </button>
+
+          <button :disabled="customer.points_balance < 800 || submitting" @click="haptic('heavy'); redeemFreeCoffee()"
+            class="w-full text-left rounded-2xl p-4 bg-coral/15 border border-coral/25 disabled:opacity-40 transition-opacity">
+            <p class="text-sm font-medium text-coral mb-0.5">Redeem Free Coffee</p>
+            <p class="text-xs text-stone num-tabular"
+              x-text="customer.points_balance >= 800 ? 'Uses 800 pts' : (800 - customer.points_balance) + ' pts to go'">
+            </p>
+          </button>
+
+          <div class="text-center mt-3.5 pb-1">
+            <button @click="closeModal()" class="text-xs text-stone">Done</button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- ===== Toast ===== -->
+    <template x-if="toast">
+      <div
+        class="fixed bottom-6 left-1/2 -translate-x-1/2 glass rounded-2xl px-4 py-3 text-sm max-w-[90%] text-center z-[60] flex items-center gap-2"
+        :class="toastIsError ? 'text-coral' : 'text-gold'" x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0"
+        x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0">
+        <i :data-lucide="toastIsError ? 'alert-circle' : 'check-circle'" class="w-4 h-4 shrink-0"></i>
+        <span x-text="toast"></span>
+      </div>
+    </template>
+
   </div>
 
-  <!-- ===== PIN gate ===== -->
-  <template x-if="!sessionToken">
-    <div class="pin-panel">
-      <div style="font-size:13px;color:var(--text-soft);">Enter staff PIN to unlock scanner</div>
-      <div class="pin-dots">
-        <template x-for="i in 4" :key="i">
-          <div class="pin-dot" :class="{ filled: pin.length >= i }"></div>
-        </template>
-      </div>
-      <div class="pin-error" x-text="pinError"></div>
-      <div class="keypad">
-        <template x-for="n in [1,2,3,4,5,6,7,8,9]" :key="n">
-          <button class="key" @click="pressKey(n)" x-text="n"></button>
-        </template>
-        <div class="key ghost"></div>
-        <button class="key" @click="pressKey(0)">0</button>
-        <button class="key ghost action" @click="backspace()">⌫</button>
-      </div>
-    </div>
-  </template>
+  <script>
+    {% raw %}
+    function baristaApp() {
+      return {
+        // PIN gate
+        pin: '',
+        pinError: '',
+        sessionToken: sessionStorage.getItem('take_barista_token') || null,
 
-  <!-- ===== Scanner ===== -->
-  <template x-if="sessionToken">
-    <div>
-      <div class="scan-card">
-        <div id="qr-reader"></div>
-        <div class="frame-guide"></div>
-      </div>
-      <div class="scan-status" x-text="scanStatus"></div>
-      <button class="manual-toggle" @click="showManual = !showManual" x-text="showManual ? 'Hide manual entry' : 'Camera not working? Enter code manually'"></button>
+        // Scanner
+        scanner: null,
+        scanStatus: 'Point the camera at the customer\'s QR code',
+        showManual: false,
+        manualCode: '',
 
-      <template x-if="showManual">
-        <div class="manual-row">
-          <input type="text" x-model="manualCode" placeholder="Paste QR payload" />
-          <button class="btn btn-gold" @click="handleScan(manualCode)">Go</button>
-        </div>
-      </template>
-    </div>
-  </template>
+        // Modal / transaction
+        customer: null,
+        cups: 1,
+        submitting: false,
 
-  <!-- ===== Customer action modal ===== -->
-  <template x-if="customer">
-    <div class="modal-backdrop" @click.self="closeModal()">
-      <div class="modal-sheet">
-        <div class="modal-handle"></div>
+        // Toast
+        toast: null,
+        toastIsError: false,
+        toastTimer: null,
 
-        <div class="customer-row">
-          <div class="customer-name" x-text="customer.first_name"></div>
-        </div>
-        <div class="customer-balance">Current balance: <span x-text="formatAmd(customer.bonus_balance)"></span> ֏</div>
+        // Branding — hardcoded fallback keeps static previews clean; resolved
+        // to the real Jinja2 value at runtime once the server has rendered it.
+        appName: 'TAKE coffee&more',
 
-        <div class="field-label">Order amount (AMD)</div>
-        <input class="amount-input" type="number" inputmode="numeric" min="1"
-               x-model.number="billAmount" placeholder="0" />
+        init() {
+          this.resolveAppName();
 
-        <template x-if="billAmount > 0">
-          <div class="redeem-hint">
-            Max redeemable now: <span x-text="formatAmd(Math.min(customer.bonus_balance, billAmount))"></span> ֏
-          </div>
-        </template>
+          const tg = window.Telegram && window.Telegram.WebApp;
+          if (tg) {
+            tg.ready();
+            tg.expand();
+            tg.setHeaderColor?.('#0F0F12');
+            tg.setBackgroundColor?.('#0F0F12');
+          }
+          if (this.sessionToken) {
+            this.$nextTick(() => this.startScanner());
+          }
+          this.$nextTick(() => this.refreshIcons());
+        },
 
-        <div class="action-grid">
-          <button class="action-btn action-earn" :disabled="!billAmount || billAmount <= 0 || submitting"
-                  @click="earn()">
-            <div class="a-title">Earn 3%</div>
-            <div class="a-sub" x-text="billAmount > 0 ? ('+' + formatAmd(Math.floor(billAmount * 0.03)) + ' ֏') : 'Enter amount'"></div>
-          </button>
-          <button class="action-btn action-redeem" :disabled="!billAmount || billAmount <= 0 || customer.bonus_balance <= 0 || submitting"
-                  @click="openRedeem()">
-            <div class="a-title">Redeem bonus</div>
-            <div class="a-sub" x-text="'Balance ' + formatAmd(customer.bonus_balance) + ' ֏'"></div>
-          </button>
-        </div>
+        // ---------- Haptics ----------
+        haptic(style = 'light') {
+          const tg = window.Telegram && window.Telegram.WebApp;
+          tg?.HapticFeedback?.impactOccurred(style);
+        },
 
-        <template x-if="redeeming">
-          <div style="margin-top:14px;">
-            <div class="field-label">Redeem amount (AMD)</div>
-            <input class="amount-input" type="number" inputmode="numeric" min="1"
-                   :max="Math.min(customer.bonus_balance, billAmount)"
-                   x-model.number="redeemAmount" placeholder="0" />
-            <button class="btn btn-gold" style="width:100%;" :disabled="submitting" @click="confirmRedeem()">
-              Confirm redeem
-            </button>
-          </div>
-        </template>
+        // ---------- Branding ----------
+        // Reads the Jinja2-rendered value from <html data-app-name="...">. If the
+        // template engine never ran (e.g. the raw file opened in a static preview),
+        // the attribute still contains the literal "{{ ... }}" text — in that case
+        // we keep the hardcoded fallback instead of showing curly braces.
+        resolveAppName() {
+          const raw = document.documentElement.dataset.appName || '';
+          if (raw && !raw.includes('{{')) {
+            this.appName = raw;
+          }
+          document.title = this.appName + ' — Barista';
+        },
 
-        <div class="close-row">
-          <button class="close-link" @click="closeModal()">Cancel</button>
-        </div>
-      </div>
-    </div>
-  </template>
+        // ---------- Icons ----------
+        // Safe wrapper: never throws if the Lucide CDN hasn't loaded yet or failed.
+        refreshIcons() {
+          if (window.lucide) {
+            lucide.createIcons();
+          }
+        },
 
-  <template x-if="toast">
-    <div class="toast" :class="{ error: toastIsError }" x-text="toast"></div>
-  </template>
-</div>
+        // ---------- PIN pad ----------
+        pressKey(n) {
+          if (this.pin.length >= 4) return;
+          this.pin += String(n);
+          this.pinError = '';
+          if (this.pin.length === 4) this.submitPin();
+        },
+        backspace() {
+          this.pin = this.pin.slice(0, -1);
+        },
+        async submitPin() {
+          try {
+            const res = await fetch('/api/barista/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pin: this.pin }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+              this.pinError = 'Incorrect PIN, try again';
+              this.pin = '';
+              return;
+            }
+            this.sessionToken = data.session_token;
+            sessionStorage.setItem('take_barista_token', this.sessionToken);
+            this.pin = '';
+            this.$nextTick(() => {
+              this.startScanner();
+              this.refreshIcons();
+            });
+          } catch (err) {
+            this.pinError = 'Network error — try again';
+            this.pin = '';
+          }
+        },
+        logout() {
+          this.sessionToken = null;
+          sessionStorage.removeItem('take_barista_token');
+          if (this.scanner) {
+            this.scanner.stop().catch(() => { });
+            this.scanner = null;
+          }
+          this.$nextTick(() => this.refreshIcons());
+        },
 
-<script>
-function baristaApp() {
-  return {
-    // PIN gate
-    pin: '',
-    pinError: '',
-    sessionToken: sessionStorage.getItem('take_barista_token') || null,
+        // ---------- Scanner ----------
+        startScanner() {
+          const readerEl = document.getElementById('qr-reader');
+          if (!readerEl || this.scanner) return;
 
-    // Scanner
-    scanner: null,
-    scanStatus: 'Point the camera at the customer\'s QR code',
-    showManual: false,
-    manualCode: '',
+          this.scanner = new Html5Qrcode('qr-reader');
+          const config = { fps: 10, qrbox: { width: 220, height: 220 } };
 
-    // Modal / transaction
-    customer: null,
-    billAmount: null,
-    redeeming: false,
-    redeemAmount: null,
-    submitting: false,
+          this.scanner
+            .start({ facingMode: 'environment' }, config,
+              (decodedText) => this.handleScan(decodedText),
+              () => { /* per-frame scan failures are expected — ignore */ }
+            )
+            .catch(() => {
+              this.scanStatus = 'Camera unavailable — use manual entry below';
+              this.showManual = true;
+            });
+        },
 
-    // Toast
-    toast: null,
-    toastIsError: false,
-    toastTimer: null,
+        async handleScan(payload) {
+          if (!payload || this.customer) return; // ignore while a modal is open
+          this.scanStatus = 'Verifying customer…';
+          try {
+            const res = await fetch('/api/barista/verify-qr', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + this.sessionToken,
+              },
+              body: JSON.stringify({ qr_payload: payload }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              this.showToast(data.detail || 'Could not verify this code', true);
+              this.scanStatus = 'Point the camera at the customer\'s QR code';
+              return;
+            }
+            this.customer = data.user;
+            this.cups = 1;
+            this.manualCode = '';
+          } catch (err) {
+            this.showToast('Network error verifying code', true);
+          }
+        },
 
-    init() {
-      const tg = window.Telegram && window.Telegram.WebApp;
-      if (tg) { tg.ready(); tg.expand(); }
-      if (this.sessionToken) {
-        this.$nextTick(() => this.startScanner());
-      }
-    },
+        // ---------- Cups stepper ----------
+        incrementCups() {
+          if (this.cups < 20) this.cups += 1;
+        },
+        decrementCups() {
+          if (this.cups > 1) this.cups -= 1;
+        },
 
-    // ---------- PIN pad ----------
-    pressKey(n) {
-      if (this.pin.length >= 4) return;
-      this.pin += String(n);
-      this.pinError = '';
-      if (this.pin.length === 4) this.submitPin();
-    },
-    backspace() {
-      this.pin = this.pin.slice(0, -1);
-    },
-    async submitPin() {
-      try {
-        const res = await fetch('/api/barista/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pin: this.pin }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-          this.pinError = 'Incorrect PIN, try again';
-          this.pin = '';
-          return;
-        }
-        this.sessionToken = data.session_token;
-        sessionStorage.setItem('take_barista_token', this.sessionToken);
-        this.pin = '';
-        this.$nextTick(() => this.startScanner());
-      } catch (err) {
-        this.pinError = 'Network error — try again';
-        this.pin = '';
-      }
-    },
-    logout() {
-      this.sessionToken = null;
-      sessionStorage.removeItem('take_barista_token');
-      if (this.scanner) {
-        this.scanner.stop().catch(() => {});
-        this.scanner = null;
-      }
-    },
+        // ---------- Add points / Redeem ----------
+        async addPoints() {
+          if (!this.customer || this.cups < 1) return;
+          this.submitting = true;
+          try {
+            const res = await fetch('/api/barista/add-points', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + this.sessionToken,
+              },
+              body: JSON.stringify({
+                telegram_id: this.customer.telegram_id,
+                cups: this.cups,
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              this.showToast(data.detail || 'Could not add points', true);
+              return;
+            }
+            this.customer = data.user; // refresh balance/tier in place — modal stays open
+            this.cups = 1;
+            this.showToast(data.message, false);
+          } catch (err) {
+            this.showToast('Network error — points not saved', true);
+          } finally {
+            this.submitting = false;
+          }
+        },
 
-    // ---------- Scanner ----------
-    startScanner() {
-      const readerEl = document.getElementById('qr-reader');
-      if (!readerEl || this.scanner) return;
+        async redeemFreeCoffee() {
+          if (!this.customer || this.customer.points_balance < 800) return;
+          this.submitting = true;
+          try {
+            const res = await fetch('/api/barista/redeem', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + this.sessionToken,
+              },
+              body: JSON.stringify({ telegram_id: this.customer.telegram_id }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              this.showToast(data.detail || 'Could not redeem — needs 800 pts', true);
+              return;
+            }
+            this.customer = data.user; // refresh balance/tier in place — modal stays open
+            this.showToast(data.message, false);
+          } catch (err) {
+            this.showToast('Network error — redeem not saved', true);
+          } finally {
+            this.submitting = false;
+          }
+        },
 
-      this.scanner = new Html5Qrcode('qr-reader');
-      const config = { fps: 10, qrbox: { width: 220, height: 220 } };
-
-      this.scanner
-        .start({ facingMode: 'environment' }, config,
-          (decodedText) => this.handleScan(decodedText),
-          () => { /* per-frame scan failures are expected — ignore */ }
-        )
-        .catch(() => {
-          this.scanStatus = 'Camera unavailable — use manual entry below';
-          this.showManual = true;
-        });
-    },
-
-    async handleScan(payload) {
-      if (!payload || this.customer) return; // ignore while a modal is open
-      this.scanStatus = 'Verifying customer…';
-      try {
-        const res = await fetch('/api/barista/verify-qr', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + this.sessionToken,
-          },
-          body: JSON.stringify({ qr_payload: payload }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          this.showToast(data.detail || 'Could not verify this code', true);
+        closeModal() {
+          this.customer = null;
+          this.cups = 1;
           this.scanStatus = 'Point the camera at the customer\'s QR code';
-          return;
-        }
-        this.customer = data.user;
-        this.billAmount = null;
-        this.manualCode = '';
-      } catch (err) {
-        this.showToast('Network error verifying code', true);
-      }
-    },
+        },
 
-    // ---------- Earn / Redeem ----------
-    async earn() {
-      if (!this.customer || !this.billAmount) return;
-      this.submitting = true;
-      try {
-        const res = await fetch('/api/barista/earn', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + this.sessionToken,
-          },
-          body: JSON.stringify({
-            telegram_id: this.customer.telegram_id,
-            bill_amount: this.billAmount,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          this.showToast(data.detail || 'Could not record transaction', true);
-          return;
-        }
-        this.showToast(data.message, false);
-        this.closeModal();
-      } catch (err) {
-        this.showToast('Network error — transaction not saved', true);
-      } finally {
-        this.submitting = false;
-      }
-    },
+        // ---------- Utilities ----------
+        formatPts(n) {
+          return new Intl.NumberFormat('en-US').format(n || 0);
+        },
 
-    openRedeem() {
-      this.redeeming = true;
-      this.redeemAmount = Math.min(this.customer.bonus_balance, this.billAmount || 0);
-    },
-
-    async confirmRedeem() {
-      if (!this.customer || !this.billAmount || !this.redeemAmount) return;
-      this.submitting = true;
-      try {
-        const res = await fetch('/api/barista/redeem', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + this.sessionToken,
-          },
-          body: JSON.stringify({
-            telegram_id: this.customer.telegram_id,
-            bill_amount: this.billAmount,
-            redeem_amount: this.redeemAmount,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          this.showToast(data.detail || 'Could not redeem bonus', true);
-          return;
-        }
-        this.showToast(data.message, false);
-        this.closeModal();
-      } catch (err) {
-        this.showToast('Network error — redeem not saved', true);
-      } finally {
-        this.submitting = false;
-      }
-    },
-
-    closeModal() {
-      this.customer = null;
-      this.billAmount = null;
-      this.redeeming = false;
-      this.redeemAmount = null;
-      this.scanStatus = 'Point the camera at the customer\'s QR code';
-    },
-
-    // ---------- Utilities ----------
-    formatAmd(n) {
-      return new Intl.NumberFormat('en-US').format(n || 0);
-    },
-
-    showToast(msg, isError) {
-      this.toast = msg;
-      this.toastIsError = !!isError;
-      if (this.toastTimer) clearTimeout(this.toastTimer);
-      this.toastTimer = setTimeout(() => { this.toast = null; }, 3500);
-    },
-  };
-}
-</script>
+        showToast(msg, isError) {
+          this.toast = msg;
+          this.toastIsError = !!isError;
+          this.$nextTick(() => this.refreshIcons());
+          if (this.toastTimer) clearTimeout(this.toastTimer);
+          this.toastTimer = setTimeout(() => { this.toast = null; }, 3500);
+        },
+      };
+    }
+    {% endraw %}
+  </script>
 </body>
+
 </html>

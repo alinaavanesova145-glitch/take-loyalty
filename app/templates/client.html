@@ -1,31 +1,33 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>TAKE coffee &amp; more — карта лояльности</title>
+  <title>TAKE Coffee & More</title>
+
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap"
     rel="stylesheet">
+
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            charcoal: '#0F0F12',
-            surface: 'rgba(255,255,255,0.045)',
-            gold: '#E2A85C',
-            coral: '#E87A5D',
-            ink: '#F5F1EA',
-            stone: '#9C978C',
-            stonedim: '#6B675E',
+            obsidian: '#121212',
+            surface: '#1A1A1A',
+            gold: '#D4AF37',
+            goldbright: '#E5B94E',
+            ink: '#F5F5F3',
+            stone: '#8E8E93',
           },
           fontFamily: {
             display: ['"Fraunces"', 'serif'],
@@ -35,6 +37,7 @@
       },
     };
   </script>
+
   <style>
     * {
       -webkit-tap-highlight-color: transparent;
@@ -42,209 +45,223 @@
 
     html,
     body {
-      background: #0F0F12;
+      background: #121212;
     }
 
     body {
       overscroll-behavior-y: none;
     }
 
-    .glass {
-      background: rgba(255, 255, 255, 0.045);
-      border: 1px solid rgba(255, 255, 255, 0.09);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-    }
-
     .num-tabular {
       font-variant-numeric: tabular-nums;
     }
 
-    /* Card flip */
-    .flip-scene {
-      perspective: 1600px;
+    ::-webkit-scrollbar {
+      display: none;
     }
 
-    .flip-card {
-      transform-style: preserve-3d;
-      transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+    .tier-badge-member {
+      background: rgba(142, 142, 147, 0.14);
+      color: #C7C7CC;
+      border: 1px solid rgba(142, 142, 147, 0.28);
     }
 
-    .flip-card.flipped {
-      transform: rotateY(180deg);
+    .tier-badge-silver {
+      background: linear-gradient(135deg, rgba(200, 200, 205, 0.20), rgba(148, 148, 155, 0.10));
+      color: #E4E4E7;
+      border: 1px solid rgba(200, 200, 205, 0.35);
     }
 
-    .flip-face {
-      backface-visibility: hidden;
-      -webkit-backface-visibility: hidden;
+    .tier-badge-gold {
+      background: linear-gradient(135deg, rgba(212, 175, 55, 0.24), rgba(229, 185, 78, 0.10));
+      color: #E5B94E;
+      border: 1px solid rgba(212, 175, 55, 0.45);
     }
 
-    .flip-back {
-      transform: rotateY(180deg);
-    }
-
-    /* QR glow pulse */
     @keyframes qrPulse {
 
       0%,
       100% {
-        box-shadow: 0 0 0 0 rgba(226, 168, 92, 0.35), 0 0 24px 2px rgba(226, 168, 92, 0.18);
+        box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.30), 0 0 20px 2px rgba(212, 175, 55, 0.14);
       }
 
       50% {
-        box-shadow: 0 0 0 8px rgba(226, 168, 92, 0), 0 0 36px 8px rgba(226, 168, 92, 0.32);
+        box-shadow: 0 0 0 6px rgba(212, 175, 55, 0), 0 0 30px 6px rgba(212, 175, 55, 0.26);
       }
     }
 
     .qr-pulse {
-      animation: qrPulse 2.6s ease-in-out infinite;
+      animation: qrPulse 2.8s ease-in-out infinite;
     }
 
     @media (prefers-reduced-motion: reduce) {
       .qr-pulse {
         animation: none;
       }
-
-      .flip-card {
-        transition: none;
-      }
     }
 
-    /* Sliding tab indicator */
-    #tab-indicator {
-      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    .nav-btn.active .nav-icon {
+      color: #D4AF37;
     }
 
-    /* Bean progress glow */
-    .bean-filled {
-      filter: drop-shadow(0 0 6px rgba(226, 168, 92, 0.65));
+    .nav-btn.active .nav-label {
+      color: #E5B94E;
     }
 
-    ::-webkit-scrollbar {
-      display: none;
+    .nav-btn .nav-icon,
+    .nav-btn .nav-label {
+      color: #8E8E93;
+      transition: color 0.15s ease;
     }
   </style>
 </head>
 
-<body class="bg-charcoal text-ink font-sans antialiased min-h-screen">
+<body class="bg-obsidian text-ink font-sans antialiased min-h-screen">
 
-  <div id="app" class="max-w-md mx-auto min-h-screen px-4 pt-6 pb-10">
+  <div id="app" class="max-w-md mx-auto min-h-screen px-4 pt-6 pb-28">
 
     <!-- Header -->
     <header class="flex items-center justify-between mb-6">
-      <div>
-        <p class="font-display text-2xl leading-none tracking-tight">TAKE</p>
-        <p class="text-[11px] uppercase tracking-[0.18em] text-stone mt-1">coffee &amp; more</p>
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-full bg-surface border border-gold/40 flex items-center justify-center">
+          <i data-lucide="coffee" class="w-4 h-4 text-gold"></i>
+        </div>
+        <div class="leading-none">
+          <p class="font-display text-lg font-semibold tracking-tight">TAKE</p>
+          <p class="text-[9px] uppercase tracking-[0.16em] text-stone -mt-0.5">Coffee &amp; More</p>
+        </div>
       </div>
-      <div id="level-badge" class="glass rounded-full px-3.5 py-1.5 flex items-center gap-1.5">
-        <i data-lucide="award" class="w-3.5 h-3.5 text-gold"></i>
-        <span id="level-label" class="text-xs font-medium text-ink">—</span>
+      <div class="flex items-center gap-2">
+        <span id="user-name" class="text-sm text-ink/90">Guest</span>
+        <span id="tier-badge"
+          class="tier-badge-member text-[10px] font-medium uppercase tracking-wide rounded-full px-2.5 py-1">Member</span>
       </div>
     </header>
 
-    <!-- Hero balance card -->
-    <section class="glass rounded-3xl p-6 mb-5">
-      <p class="text-xs uppercase tracking-[0.14em] text-stone mb-2">баланс баллов</p>
-      <div class="flex items-baseline gap-2 mb-5">
-        <span id="balance-value" class="font-display text-5xl num-tabular">—</span>
-        <span class="text-stone text-sm mb-1">баллов</span>
-      </div>
+    <!-- ===== Card tab ===== -->
+    <section id="tab-card">
 
-      <div class="flex items-center justify-between mb-2.5">
-        <p id="progress-caption" class="text-xs text-stone">&nbsp;</p>
-        <p id="progress-count" class="text-xs text-gold font-medium num-tabular">&nbsp;</p>
-      </div>
-      <div id="bean-row" class="flex items-center gap-1.5"></div>
-    </section>
-
-    <!-- Tab switcher -->
-    <div class="relative glass rounded-full p-1 flex mb-5">
-      <div id="tab-indicator" class="absolute inset-y-1 left-1 w-[calc(50%-4px)] bg-gold/90 rounded-full"></div>
-      <button data-tab="card" onclick="setTab('card')"
-        class="tab-btn relative z-10 flex-1 py-2.5 text-sm font-medium rounded-full transition-colors">
-        Карта / QR
-      </button>
-      <button data-tab="history" onclick="setTab('history')"
-        class="tab-btn relative z-10 flex-1 py-2.5 text-sm font-medium rounded-full transition-colors">
-        История
-      </button>
-    </div>
-
-    <!-- Panel: Card / QR -->
-    <section id="panel-card" class="flex flex-col items-center">
-      <div class="flip-scene w-full mb-4" style="height: 200px;">
-        <div id="flip-card" class="flip-card relative w-full h-full cursor-pointer" onclick="flipCard()">
-          <div class="flip-face absolute inset-0 glass rounded-2xl p-5 flex flex-col justify-between">
-            <div class="flex items-start justify-between">
-              <p class="font-display text-lg">TAKE</p>
-              <i data-lucide="coffee" class="w-5 h-5 text-gold"></i>
-            </div>
-            <div>
-              <p id="card-name" class="text-base font-medium">—</p>
-              <p class="text-xs text-stone mt-0.5">Нажмите, чтобы показать QR</p>
-            </div>
-          </div>
-          <div
-            class="flip-face flip-back absolute inset-0 glass rounded-2xl p-5 flex flex-col items-center justify-center gap-3">
-            <div id="qrcode" class="qr-pulse bg-ink rounded-xl p-2.5"></div>
-            <p class="text-[11px] text-stone">Покажите бариста на кассе</p>
-          </div>
+      <!-- Balance card -->
+      <div class="bg-surface border border-white/10 rounded-3xl p-6 mb-4">
+        <p class="text-xs uppercase tracking-[0.14em] text-stone mb-2">Your balance</p>
+        <div class="flex items-baseline gap-1.5 mb-5">
+          <span id="balance-value" class="font-display text-5xl text-goldbright num-tabular">0</span>
+          <span class="text-stone text-sm mb-1">pts</span>
         </div>
+
+        <div class="flex items-center justify-between mb-2.5">
+          <p id="progress-caption" class="text-xs text-stone">800 pts to a free coffee</p>
+          <p id="progress-count" class="text-xs text-gold font-medium num-tabular">0/8</p>
+        </div>
+        <div id="segment-row" class="flex items-center gap-1.5"></div>
       </div>
+
+      <!-- QR card -->
+      <div class="bg-surface border-2 border-gold/70 rounded-3xl p-6 flex flex-col items-center">
+        <div id="qrcode" class="qr-pulse bg-ink rounded-xl p-2.5 mb-3"></div>
+        <p class="text-xs text-stone">Show this to your barista</p>
+      </div>
+
     </section>
 
-    <!-- Panel: History -->
-    <section id="panel-history" class="hidden">
+    <!-- ===== History tab ===== -->
+    <section id="tab-history" class="hidden">
       <div id="tx-list" class="space-y-2"></div>
-      <p id="tx-empty" class="hidden text-center text-sm text-stone py-10">Пока нет операций</p>
+      <p id="tx-empty" class="hidden text-center text-sm text-stone py-14">No transactions yet — your first cup starts
+        the count.</p>
+    </section>
+
+    <!-- ===== Rewards tab ===== -->
+    <section id="tab-rewards" class="hidden">
+      <div class="bg-surface border border-white/10 rounded-3xl p-5 mb-4">
+        <p class="text-sm text-ink/90 mb-1">How it works</p>
+        <p class="text-xs text-stone leading-relaxed">Every cup earns 100 pts. Collect 800 pts (8 cups) and your 9th
+          coffee is on us.</p>
+      </div>
+
+      <div class="space-y-3" id="tier-ladder"></div>
     </section>
 
   </div>
+
+  <!-- Bottom nav -->
+  <nav class="fixed inset-x-0 bottom-0 z-30">
+    <div class="max-w-md mx-auto bg-surface/95 backdrop-blur border-t border-white/10 flex"
+      style="padding-bottom: env(safe-area-inset-bottom);">
+      <button data-tab="card" onclick="setTab('card')"
+        class="nav-btn active flex-1 flex flex-col items-center gap-1 py-3">
+        <i data-lucide="credit-card" class="nav-icon w-5 h-5"></i>
+        <span class="nav-label text-[10px] font-medium">Card</span>
+      </button>
+      <button data-tab="history" onclick="setTab('history')"
+        class="nav-btn flex-1 flex flex-col items-center gap-1 py-3">
+        <i data-lucide="clock" class="nav-icon w-5 h-5"></i>
+        <span class="nav-label text-[10px] font-medium">History</span>
+      </button>
+      <button data-tab="rewards" onclick="setTab('rewards')"
+        class="nav-btn flex-1 flex flex-col items-center gap-1 py-3">
+        <i data-lucide="gift" class="nav-icon w-5 h-5"></i>
+        <span class="nav-label text-[10px] font-medium">Rewards</span>
+      </button>
+    </div>
+  </nav>
 
   <script>
     const tg = window.Telegram?.WebApp;
     if (tg) {
       tg.ready();
       tg.expand();
-      tg.setHeaderColor?.('#0F0F12');
-      tg.setBackgroundColor?.('#0F0F12');
-    }
-    function haptic(style = 'light') {
-      tg?.HapticFeedback?.impactOccurred(style);
+      tg.setHeaderColor?.('#121212');
+      tg.setBackgroundColor?.('#121212');
     }
 
-    const REWARD_THRESHOLD = 8; // покупок до бесплатного напитка
+    const REWARD_THRESHOLD = 800;
+    const POINTS_PER_CUP = 100;
+    const SEGMENTS = 8;
 
-    // Демо-данные — используются только если API недоступен (просмотр вне Telegram)
+    const TIERS = [
+      { name: 'Member', range: '0–1 free coffees', cls: 'tier-badge-member', icon: 'circle' },
+      { name: 'Silver', range: '2–4 free coffees', cls: 'tier-badge-silver', icon: 'award' },
+      { name: 'Gold', range: '5+ free coffees', cls: 'tier-badge-gold', icon: 'crown' },
+    ];
+
+    // Demo data mirrors the real zero-start rule so the design is honest even
+    // when previewed outside Telegram / without the FastAPI backend running.
     const DEMO_DATA = {
-      user: { first_name: 'Гоар', bonus_balance: 1250, cashback_percent: 5, level: 'Gold', progress_count: 5 },
-      transactions: [
-        { type: 'ACCUMULATE', branch: 'Tumanyan 38', sum_amd: 2400, bonus_change: 120, timestamp: '2026-08-22T09:14:00' },
-        { type: 'DEDUCT', branch: 'Abovyan City', sum_amd: 0, bonus_change: -400, timestamp: '2026-08-19T17:02:00' },
-        { type: 'ACCUMULATE', branch: 'Tumanyan 38', sum_amd: 1800, bonus_change: 90, timestamp: '2026-08-17T08:41:00' },
-        { type: 'ACCUMULATE', branch: 'Komitas Ave', sum_amd: 3200, bonus_change: 160, timestamp: '2026-08-12T13:20:00' },
-      ],
+      first_name: 'Guest',
+      points_balance: 0,
+      free_coffees_redeemed: 0,
+      tier: 'Member',
+      transactions: [],
     };
 
+    function tierBadgeClass(tier) {
+      return { Member: 'tier-badge-member', Silver: 'tier-badge-silver', Gold: 'tier-badge-gold' }[tier] || 'tier-badge-member';
+    }
+
     function render(data) {
-      const u = data.user;
-      document.getElementById('balance-value').textContent = u.bonus_balance.toLocaleString('ru-RU');
-      document.getElementById('level-label').textContent = u.level;
-      document.getElementById('card-name').textContent = u.first_name;
+      document.getElementById('user-name').textContent = data.first_name || 'Guest';
 
-      const filled = Math.min(u.progress_count, REWARD_THRESHOLD);
-      const remaining = REWARD_THRESHOLD - filled;
+      const badge = document.getElementById('tier-badge');
+      badge.textContent = data.tier;
+      badge.className = `${tierBadgeClass(data.tier)} text-[10px] font-medium uppercase tracking-wide rounded-full px-2.5 py-1`;
+
+      document.getElementById('balance-value').textContent = data.points_balance.toLocaleString('en-US');
+
+      const cups = Math.min(Math.floor(data.points_balance / POINTS_PER_CUP), SEGMENTS);
+      const remaining = Math.max(REWARD_THRESHOLD - data.points_balance, 0);
       document.getElementById('progress-caption').textContent =
-        remaining > 0 ? `ещё ${remaining} до бесплатного кофе` : 'бесплатный кофе доступен';
-      document.getElementById('progress-count').textContent = `${filled}/${REWARD_THRESHOLD}`;
+        remaining > 0 ? `${remaining} pts to a free coffee` : 'Free coffee unlocked!';
+      document.getElementById('progress-count').textContent = `${cups}/${SEGMENTS}`;
 
-      const beanRow = document.getElementById('bean-row');
-      beanRow.innerHTML = '';
-      for (let i = 1; i <= REWARD_THRESHOLD; i++) {
-        const on = i <= filled;
-        const bean = document.createElement('div');
-        bean.className = `h-2.5 flex-1 rounded-full ${on ? 'bg-gold bean-filled' : 'bg-white/10'}`;
-        beanRow.appendChild(bean);
+      const row = document.getElementById('segment-row');
+      row.innerHTML = '';
+      for (let i = 1; i <= SEGMENTS; i++) {
+        const seg = document.createElement('div');
+        const on = i <= cups;
+        seg.className = `h-2.5 flex-1 rounded-full ${on ? 'bg-gold' : 'bg-white/10'}`;
+        if (on) seg.style.boxShadow = '0 0 6px rgba(212,175,55,0.55)';
+        row.appendChild(seg);
       }
 
       const list = document.getElementById('tx-list');
@@ -255,35 +272,55 @@
       } else {
         empty.classList.add('hidden');
         data.transactions.forEach((tx) => {
-          const isAdd = tx.type === 'ACCUMULATE';
-          const date = new Date(tx.timestamp).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-          const row = document.createElement('div');
-          row.className = 'glass rounded-2xl px-4 py-3 flex items-center justify-between';
-          row.innerHTML = `
+          const isEarn = tx.points_change > 0;
+          const date = new Date(tx.timestamp).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+          const row2 = document.createElement('div');
+          row2.className = 'bg-surface border border-white/10 rounded-2xl px-4 py-3 flex items-center justify-between';
+          row2.innerHTML = `
           <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-full flex items-center justify-center ${isAdd ? 'bg-gold/15' : 'bg-coral/15'}">
-              <i data-lucide="${isAdd ? 'plus' : 'minus'}" class="w-4 h-4 ${isAdd ? 'text-gold' : 'text-coral'}"></i>
+            <div class="w-9 h-9 rounded-full flex items-center justify-center ${isEarn ? 'bg-gold/15' : 'bg-white/[0.06]'}">
+              <i data-lucide="${isEarn ? 'plus' : 'gift'}" class="w-4 h-4 ${isEarn ? 'text-gold' : 'text-stone'}"></i>
             </div>
             <div>
-              <p class="text-sm font-medium">${tx.branch}</p>
-              <p class="text-xs text-stonedim">${date}</p>
+              <p class="text-sm text-ink/90">${tx.label || (isEarn ? 'Cup earned' : 'Reward redeemed')}</p>
+              <p class="text-xs text-stone">${date}</p>
             </div>
           </div>
-          <p class="text-sm font-medium num-tabular ${isAdd ? 'text-gold' : 'text-coral'}">
-            ${isAdd ? '+' : ''}${tx.bonus_change}
+          <p class="text-sm font-medium num-tabular ${isEarn ? 'text-gold' : 'text-stone'}">
+            ${isEarn ? '+' : ''}${tx.points_change}
           </p>`;
-          list.appendChild(row);
+          list.appendChild(row2);
         });
       }
 
-      // QR-код — платёжный идентификатор клиента для эндпоинта /api/transaction/scan
+      // Rewards tier ladder
+      const ladder = document.getElementById('tier-ladder');
+      ladder.innerHTML = '';
+      TIERS.forEach((t) => {
+        const isCurrent = t.name === data.tier;
+        const card = document.createElement('div');
+        card.className = `rounded-2xl p-4 flex items-center justify-between border ${isCurrent ? 'border-gold/60 bg-gold/[0.06]' : 'border-white/10 bg-surface'}`;
+        card.innerHTML = `
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full flex items-center justify-center ${isCurrent ? 'bg-gold/15' : 'bg-white/[0.06]'}">
+            <i data-lucide="${t.icon}" class="w-4 h-4 ${isCurrent ? 'text-gold' : 'text-stone'}"></i>
+          </div>
+          <div>
+            <p class="text-sm ${isCurrent ? 'text-goldbright' : 'text-ink/90'} font-medium">${t.name}</p>
+            <p class="text-xs text-stone">${t.range}</p>
+          </div>
+        </div>
+        ${isCurrent ? '<span class="text-[10px] uppercase tracking-wide text-gold">Current</span>' : ''}`;
+        ladder.appendChild(card);
+      });
+
       document.getElementById('qrcode').innerHTML = '';
       new QRCode(document.getElementById('qrcode'), {
         text: `TAKE:${data.telegram_id || 'demo'}`,
         width: 176,
         height: 176,
-        colorDark: '#0F0F12',
-        colorLight: '#F5F1EA',
+        colorDark: '#121212',
+        colorLight: '#F5F5F3',
         correctLevel: QRCode.CorrectLevel.M,
       });
 
@@ -291,33 +328,29 @@
     }
 
     function setTab(tab) {
-      haptic('light');
-      document.getElementById('panel-card').classList.toggle('hidden', tab !== 'card');
-      document.getElementById('panel-history').classList.toggle('hidden', tab !== 'history');
-      document.getElementById('tab-indicator').style.transform = tab === 'history' ? 'translateX(100%)' : 'translateX(0)';
-      document.querySelectorAll('.tab-btn').forEach((btn) => {
-        btn.classList.toggle('text-charcoal', btn.dataset.tab === tab);
-        btn.classList.toggle('text-stone', btn.dataset.tab !== tab);
+      ['card', 'history', 'rewards'].forEach((t) => {
+        document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
       });
-    }
-
-    function flipCard() {
-      haptic('medium');
-      document.getElementById('flip-card').classList.toggle('flipped');
+      document.querySelectorAll('.nav-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
+      });
     }
 
     async function init() {
       setTab('card');
-      const telegramId = tg?.initDataUnsafe?.user?.id;
+
+      const tgUser = tg?.initDataUnsafe?.user;
+      const telegramId = tgUser?.id;
+      const firstName = tgUser?.first_name || 'Guest';
+
       try {
         if (!telegramId) throw new Error('no telegram context');
-        const res = await fetch(`/api/user/${telegramId}`);
+        const res = await fetch(`/api/user/${telegramId}?first_name=${encodeURIComponent(firstName)}`);
         if (!res.ok) throw new Error('api error');
-        const payload = await res.json();
-        render({ ...payload, telegram_id: telegramId });
+        const state = await res.json();
+        render({ ...state, telegram_id: telegramId, transactions: [] });
       } catch (e) {
-        // Просмотр вне Telegram или бэкенд недоступен — показываем демо-данные
-        render({ ...DEMO_DATA, telegram_id: 'demo' });
+        render({ ...DEMO_DATA, first_name: firstName, telegram_id: telegramId || 'demo' });
       }
     }
 

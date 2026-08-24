@@ -1,362 +1,380 @@
 """
-FastAPI application entrypoint for the TAKE coffee&more Loyalty System.
+TAKE coffee & more — FastAPI backend.
 
-Route map:
-  GET  /app                        Customer WebApp (Jinja2 template)
-  GET  /barista                    Barista scanner WebApp (Jinja2 template)
+Запуск (из корня проекта, где лежит models.py):
+    uvicorn app.main:app --reload
 
-  POST /api/auth                   Telegram WebApp handshake -> user + QR payload
-  GET  /api/me/{telegram_id}       Fetch current balance (polling refresh)
-  GET  /api/me/{telegram_id}/history  Recent transactions for a customer
-
-  POST /api/barista/login          PIN check -> session token
-  POST /api/barista/verify-qr      Decode + validate a scanned customer QR
-  POST /api/barista/earn           Record an EARN transaction (+3% cashback)
-  POST /api/barista/redeem         Record a REDEEM transaction
-
-  GET  /api/admin/branches         List branches
-  GET  /api/admin/transactions     Multi-branch transaction history (admin)
+Переменные окружения:
+    DATABASE_URL      — напр. postgresql+asyncpg://user:pass@host/dbname
+    CORS_ORIGINS       — через запятую, напр. "https://t.me,https://your-webapp.example"
 """
-import logging
-import math
-from contextlib import asynccontextmanager
-from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from __future__ import annotations
+
+import hashlib
+import os
+import secrets
+from collections.abc import AsyncGenerator
+from datetime import datetime, timedelta, timezone
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.auth import (
-    InvalidInitData,
-    InvalidQRPayload,
-    check_barista_pin,
-    issue_barista_session_token,
-    sign_qr_payload,
-    validate_telegram_init_data,
-    verify_barista_session_token,
-    verify_qr_payload,
+from app.models import Base, Branch, Employee, EmployeeSession, Transaction, TransactionType, User
+
+# --------------------------------------------------------------------------
+# Config
+# --------------------------------------------------------------------------
+
+APP_NAME = os.environ.get("APP_NAME", "TAKE coffee&more Loyalty")
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/take_loyalty"
 )
-from app.config import settings
-from app.database import get_db, init_db
-from app.models import Branch, Transaction, TransactionType, User
-from app.schemas import (
-    AuthRequest,
-    AuthResponse,
-    BaristaLoginRequest,
-    BaristaLoginResponse,
-    BranchOut,
-    EarnRequest,
-    QRVerifyRequest,
-    QRVerifyResponse,
-    RedeemRequest,
-    TransactionOut,
-    TransactionResult,
-    UserOut,
-    UserPublic,
+CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",")]
+
+POINTS_PER_CUP = 100
+REWARD_THRESHOLD = 800  # points needed for one free coffee (8 cups)
+SESSION_TTL_HOURS = 12
+
+engine = create_async_engine(DATABASE_URL, echo=False)
+SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with SessionLocal() as session:
+        yield session
+
+
+app = FastAPI(title="TAKE coffee & more API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-from app.services.bot import send_transaction_notification
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("take_loyalty.main")
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("Starting up: initializing database + seeding default branch...")
-    await init_db()
-    logger.info("Startup complete.")
-    yield
-    logger.info("Shutting down.")
-
-
-app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
-
-# Middleware для авто-пропуска страницы предупреждения ngrok
-@app.middleware("http")
-async def add_ngrok_skip_header(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["ngrok-skip-browser-warning"] = "true"
-    return response
 
 templates = Jinja2Templates(directory="app/templates")
-
-# Static assets (favicon, any local JS/CSS overrides not pulled from CDN).
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-async def _get_or_create_user(db: AsyncSession, tg_user: dict) -> User:
-    telegram_id = int(tg_user["id"])
-    result = await db.execute(select(User).where(User.telegram_id == telegram_id))
-    user = result.scalar_one_or_none()
-    if user is None:
-        user = User(
-            telegram_id=telegram_id,
-            first_name=tg_user.get("first_name", "Guest"),
-            username=tg_user.get("username"),
-            bonus_balance=0,
-        )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-    return user
+@app.on_event("startup")
+async def on_startup() -> None:
+    # Convenient for local dev / first boot. In production, prefer Alembic
+    # migrations instead of create_all so schema changes are tracked.
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 
-async def _get_default_branch(db: AsyncSession, branch_id: int) -> Branch:
-    result = await db.execute(select(Branch).where(Branch.id == branch_id))
-    branch = result.scalar_one_or_none()
-    if branch is None:
-        raise HTTPException(status_code=404, detail=f"Branch {branch_id} not found")
-    if not branch.is_active:
-        raise HTTPException(status_code=400, detail=f"Branch {branch_id} is not active")
-    return branch
-
-
-async def require_barista_session(authorization: Optional[str] = Header(default=None)) -> None:
-    """
-    FastAPI dependency guarding every barista-only mutation endpoint.
-    Expects `Authorization: Bearer <session_token>` issued by /api/barista/login.
-    """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing barista session token")
-
-    token = authorization.removeprefix("Bearer ").strip()
-    if not verify_barista_session_token(token):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired barista session")
-
-
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # Frontend routes
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+
+
 @app.get("/app", response_class=HTMLResponse)
 async def customer_app(request: Request):
     return templates.TemplateResponse(
-        request=request,
-        name="client.html",
-        context={"app_name": settings.APP_NAME},
+        request=request, name="client.html", context={"app_name": APP_NAME}
     )
 
 
 @app.get("/barista", response_class=HTMLResponse)
 async def barista_app(request: Request):
     return templates.TemplateResponse(
-        request=request,
-        name="barista.html",
-        context={"app_name": settings.APP_NAME},
+        request=request, name="barista.html", context={"app_name": APP_NAME}
     )
 
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
     return HTMLResponse(
-        f"<h1>{settings.APP_NAME}</h1>"
+        f"<h1>{APP_NAME}</h1>"
         f"<p>Customer app: <a href='/app'>/app</a> &middot; "
         f"Barista scanner: <a href='/barista'>/barista</a></p>"
     )
 
 
-# ---------------------------------------------------------------------------
-# Customer auth / handshake
-# ---------------------------------------------------------------------------
-@app.post("/api/auth", response_model=AuthResponse)
-async def authenticate(payload: AuthRequest, db: AsyncSession = Depends(get_db)):
-    try:
-        data = validate_telegram_init_data(payload.init_data)
-    except InvalidInitData as exc:
-        raise HTTPException(status_code=401, detail=f"Invalid Telegram initData: {exc}") from exc
+# --------------------------------------------------------------------------
+# Loyalty tier logic
+# --------------------------------------------------------------------------
 
-    user = await _get_or_create_user(db, data["user"])
-    branch = await _get_default_branch(db, settings.DEFAULT_BRANCH_ID)
-    qr_payload = sign_qr_payload(user.telegram_id)
 
-    return AuthResponse(
-        user=UserOut.model_validate(user),
-        branch=BranchOut.model_validate(branch),
-        qr_payload=qr_payload,
+def compute_tier(free_coffees_redeemed: int) -> str:
+    """Member: 0-1, Silver: 2-4, Gold: 5+ free coffees redeemed."""
+    if free_coffees_redeemed >= 5:
+        return "Gold"
+    if free_coffees_redeemed >= 2:
+        return "Silver"
+    return "Member"
+
+
+def user_state(user: User) -> "UserStateOut":
+    return UserStateOut(
+        telegram_id=user.telegram_id,
+        first_name=user.first_name,
+        points_balance=user.points_balance,
+        free_coffees_redeemed=user.free_coffees_redeemed,
+        tier=compute_tier(user.free_coffees_redeemed),
+        cups_count=user.points_balance // POINTS_PER_CUP,
+        points_to_next_reward=max(REWARD_THRESHOLD - user.points_balance, 0),
     )
 
 
-@app.get("/api/me/{telegram_id}", response_model=UserOut)
-async def get_me(telegram_id: int, db: AsyncSession = Depends(get_db)):
+# --------------------------------------------------------------------------
+# Schemas
+# --------------------------------------------------------------------------
+
+
+class UserStateOut(BaseModel):
+    telegram_id: int
+    first_name: str | None
+    points_balance: int
+    free_coffees_redeemed: int
+    tier: str
+    cups_count: int
+    points_to_next_reward: int
+
+
+class BaristaLoginIn(BaseModel):
+    pin: str = Field(min_length=4, max_length=8)
+
+
+class BaristaLoginOut(BaseModel):
+    ok: bool
+    session_token: str
+    employee_name: str
+    branch_name: str
+
+
+class VerifyQrIn(BaseModel):
+    qr_payload: str
+
+
+class VerifyQrOut(BaseModel):
+    user: UserStateOut
+
+
+class AddPointsIn(BaseModel):
+    telegram_id: int
+    cups: int = Field(default=1, ge=1, le=20)
+    idempotency_key: str | None = None
+
+
+class RedeemIn(BaseModel):
+    telegram_id: int
+    idempotency_key: str | None = None
+
+
+class TransactionOut(BaseModel):
+    message: str
+    user: UserStateOut
+
+
+# --------------------------------------------------------------------------
+# Helpers
+# --------------------------------------------------------------------------
+
+
+def hash_pin(pin: str) -> str:
+    """Simple salted hash for staff PINs. Employees are seeded out-of-band
+    (admin tooling / DB seed script) using this same function."""
+    salt = os.environ.get("PIN_SALT", "take-coffee-static-salt")
+    return hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
+
+
+async def get_or_create_user(
+    db: AsyncSession, telegram_id: int, first_name: str | None = None
+) -> User:
+    """Zero-start logic: brand-new users begin at 0 points / 0 redemptions."""
     result = await db.execute(select(User).where(User.telegram_id == telegram_id))
     user = result.scalar_one_or_none()
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return UserOut.model_validate(user)
+        user = User(
+            telegram_id=telegram_id,
+            first_name=first_name,
+            points_balance=0,
+            free_coffees_redeemed=0,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    elif first_name and user.first_name != first_name:
+        user.first_name = first_name
+        await db.commit()
+        await db.refresh(user)
+    return user
 
 
-@app.get("/api/me/{telegram_id}/history", response_model=list[TransactionOut])
-async def get_my_history(telegram_id: int, limit: int = 20, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.telegram_id == telegram_id))
-    user = result.scalar_one_or_none()
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+async def get_current_employee(
+    authorization: str | None = Header(default=None), db: AsyncSession = Depends(get_db)
+) -> Employee:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing barista session")
+    token = authorization.removeprefix("Bearer ").strip()
 
-    tx_result = await db.execute(
-        select(Transaction)
-        .where(Transaction.user_id == user.id)
-        .order_by(Transaction.created_at.desc())
-        .limit(limit)
+    result = await db.execute(select(EmployeeSession).where(EmployeeSession.token == token))
+    session = result.scalar_one_or_none()
+    if not session or session.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
+        raise HTTPException(status_code=401, detail="Session expired, please log in again")
+
+    employee = await db.get(Employee, session.employee_id)
+    if not employee or not employee.is_active:
+        raise HTTPException(status_code=401, detail="Employee inactive")
+    return employee
+
+
+# --------------------------------------------------------------------------
+# Customer-facing endpoints
+# --------------------------------------------------------------------------
+
+
+@app.get("/api/user/{telegram_id}", response_model=UserStateOut)
+async def get_user(
+    telegram_id: int, first_name: str | None = None, db: AsyncSession = Depends(get_db)
+):
+    user = await get_or_create_user(db, telegram_id, first_name)
+    return user_state(user)
+
+
+# --------------------------------------------------------------------------
+# Barista endpoints
+# --------------------------------------------------------------------------
+
+
+@app.post("/api/barista/login", response_model=BaristaLoginOut)
+async def barista_login(payload: BaristaLoginIn, db: AsyncSession = Depends(get_db)):
+    pin_hash = hash_pin(payload.pin)
+    result = await db.execute(
+        select(Employee).where(Employee.pin_code_hash == pin_hash, Employee.is_active.is_(True))
     )
-    transactions = tx_result.scalars().all()
-    return [TransactionOut.model_validate(t) for t in transactions]
-
-
-# ---------------------------------------------------------------------------
-# Barista: PIN login
-# ---------------------------------------------------------------------------
-@app.post("/api/barista/login", response_model=BaristaLoginResponse)
-async def barista_login(payload: BaristaLoginRequest):
-    if not check_barista_pin(payload.pin):
+    employee = result.scalar_one_or_none()
+    if not employee:
         raise HTTPException(status_code=401, detail="Incorrect PIN")
-    token = issue_barista_session_token()
-    return BaristaLoginResponse(ok=True, session_token=token)
 
+    branch = await db.get(Branch, employee.branch_id)
 
-# ---------------------------------------------------------------------------
-# Barista: scan a customer QR code
-# ---------------------------------------------------------------------------
-@app.post("/api/barista/verify-qr", response_model=QRVerifyResponse, dependencies=[Depends(require_barista_session)])
-async def barista_verify_qr(payload: QRVerifyRequest, db: AsyncSession = Depends(get_db)):
-    try:
-        telegram_id = verify_qr_payload(payload.qr_payload)
-    except InvalidQRPayload as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid QR code: {exc}") from exc
-
-    result = await db.execute(select(User).where(User.telegram_id == telegram_id))
-    user = result.scalar_one_or_none()
-    if user is None:
-        raise HTTPException(status_code=404, detail="No customer found for this QR code")
-
-    return QRVerifyResponse(user=UserPublic.model_validate(user))
-
-
-# ---------------------------------------------------------------------------
-# Barista: EARN transaction (+3% cashback)
-# ---------------------------------------------------------------------------
-@app.post("/api/barista/earn", response_model=TransactionResult, dependencies=[Depends(require_barista_session)])
-async def earn_bonus(payload: EarnRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.telegram_id == payload.telegram_id))
-    user = result.scalar_one_or_none()
-    if user is None:
-        raise HTTPException(status_code=404, detail="Customer not found")
-
-    branch = await _get_default_branch(db, payload.branch_id)
-
-    bonus_earned = math.floor(payload.bill_amount * settings.CASHBACK_RATE)
-
-    transaction = Transaction(
-        user_id=user.id,
-        branch_id=branch.id,
-        bill_amount=payload.bill_amount,
-        bonus_change=bonus_earned,
-        type=TransactionType.EARN,
+    token = secrets.token_urlsafe(32)
+    session = EmployeeSession(
+        employee_id=employee.id,
+        token=token,
+        expires_at=datetime.now(timezone.utc).replace(tzinfo=None)
+        + timedelta(hours=SESSION_TTL_HOURS),
     )
-    user.bonus_balance += bonus_earned
-
-    db.add(transaction)
+    db.add(session)
     await db.commit()
-    await db.refresh(transaction)
+
+    return BaristaLoginOut(
+        ok=True,
+        session_token=token,
+        employee_name=employee.name,
+        branch_name=branch.name if branch else "—",
+    )
+
+
+@app.post("/api/barista/verify-qr", response_model=VerifyQrOut)
+async def verify_qr(
+    payload: VerifyQrIn,
+    db: AsyncSession = Depends(get_db),
+    employee: Employee = Depends(get_current_employee),
+):
+    # Expected payload format: "TAKE:{telegram_id}"
+    raw = payload.qr_payload.strip()
+    if not raw.startswith("TAKE:"):
+        raise HTTPException(status_code=400, detail="Unrecognized QR code")
+    try:
+        telegram_id = int(raw.removeprefix("TAKE:"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Unrecognized QR code")
+
+    user = await get_or_create_user(db, telegram_id)
+    return VerifyQrOut(user=user_state(user))
+
+
+@app.post("/api/barista/add-points", response_model=TransactionOut)
+async def add_points(
+    payload: AddPointsIn,
+    db: AsyncSession = Depends(get_db),
+    employee: Employee = Depends(get_current_employee),
+):
+    if payload.idempotency_key:
+        existing = await db.execute(
+            select(Transaction).where(Transaction.idempotency_key == payload.idempotency_key)
+        )
+        if existing.scalar_one_or_none():
+            user = await get_or_create_user(db, payload.telegram_id)
+            return TransactionOut(message="Already recorded", user=user_state(user))
+
+    user = await get_or_create_user(db, payload.telegram_id)
+    points_earned = POINTS_PER_CUP * payload.cups
+    user.points_balance += points_earned
+
+    db.add(
+        Transaction(
+            user_id=user.id,
+            branch_id=employee.branch_id,
+            employee_id=employee.id,
+            sum_amd=None,
+            points_change=points_earned,
+            type=TransactionType.ACCUMULATE,
+            idempotency_key=payload.idempotency_key,
+        )
+    )
+    await db.commit()
     await db.refresh(user)
 
-    await send_transaction_notification(
-        telegram_id=user.telegram_id,
-        transaction_type=TransactionType.EARN,
-        bonus_change=bonus_earned,
-        branch_name=branch.name,
-        new_balance=user.bonus_balance,
-    )
-
-    return TransactionResult(
-        transaction=TransactionOut.model_validate(transaction),
-        new_balance=user.bonus_balance,
-        message=f"Earned +{bonus_earned} ֏. New balance: {user.bonus_balance} ֏.",
+    cup_word = "cup" if payload.cups == 1 else "cups"
+    return TransactionOut(
+        message=f"+{points_earned} pts for {payload.cups} {cup_word}",
+        user=user_state(user),
     )
 
 
-# ---------------------------------------------------------------------------
-# Barista: REDEEM transaction
-# ---------------------------------------------------------------------------
-@app.post("/api/barista/redeem", response_model=TransactionResult, dependencies=[Depends(require_barista_session)])
-async def redeem_bonus(payload: RedeemRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.telegram_id == payload.telegram_id))
-    user = result.scalar_one_or_none()
-    if user is None:
-        raise HTTPException(status_code=404, detail="Customer not found")
+@app.post("/api/barista/redeem", response_model=TransactionOut)
+async def redeem(
+    payload: RedeemIn,
+    db: AsyncSession = Depends(get_db),
+    employee: Employee = Depends(get_current_employee),
+):
+    if payload.idempotency_key:
+        existing = await db.execute(
+            select(Transaction).where(Transaction.idempotency_key == payload.idempotency_key)
+        )
+        if existing.scalar_one_or_none():
+            user = await get_or_create_user(db, payload.telegram_id)
+            return TransactionOut(message="Already recorded", user=user_state(user))
 
-    branch = await _get_default_branch(db, payload.branch_id)
-
-    max_redeemable = min(user.bonus_balance, payload.bill_amount)
-    if payload.redeem_amount > max_redeemable:
+    user = await get_or_create_user(db, payload.telegram_id)
+    if user.points_balance < REWARD_THRESHOLD:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"Cannot redeem {payload.redeem_amount} ֏. Maximum redeemable is "
-                f"{max_redeemable} ֏ (lesser of balance {user.bonus_balance} ֏ "
-                f"and bill amount {payload.bill_amount} ֏)."
-            ),
+            detail=f"Not enough points — needs {REWARD_THRESHOLD}, has {user.points_balance}",
         )
-    if payload.redeem_amount <= 0:
-        raise HTTPException(status_code=400, detail="Redeem amount must be positive")
 
-    transaction = Transaction(
-        user_id=user.id,
-        branch_id=branch.id,
-        bill_amount=payload.bill_amount,
-        bonus_change=-payload.redeem_amount,
-        type=TransactionType.REDEEM,
+    user.points_balance -= REWARD_THRESHOLD
+    user.free_coffees_redeemed += 1
+
+    db.add(
+        Transaction(
+            user_id=user.id,
+            branch_id=employee.branch_id,
+            employee_id=employee.id,
+            sum_amd=None,
+            points_change=-REWARD_THRESHOLD,
+            type=TransactionType.DEDUCT,
+            idempotency_key=payload.idempotency_key,
+        )
     )
-    user.bonus_balance -= payload.redeem_amount
-
-    db.add(transaction)
     await db.commit()
-    await db.refresh(transaction)
     await db.refresh(user)
 
-    await send_transaction_notification(
-        telegram_id=user.telegram_id,
-        transaction_type=TransactionType.REDEEM,
-        bonus_change=-payload.redeem_amount,
-        branch_name=branch.name,
-        new_balance=user.bonus_balance,
-    )
-
-    return TransactionResult(
-        transaction=TransactionOut.model_validate(transaction),
-        new_balance=user.bonus_balance,
-        message=f"Redeemed {payload.redeem_amount} ֏. New balance: {user.bonus_balance} ֏.",
-    )
-
-
-# ---------------------------------------------------------------------------
-# Admin: branches + multi-branch transaction history
-# ---------------------------------------------------------------------------
-@app.get("/api/admin/branches", response_model=list[BranchOut])
-async def list_branches(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Branch).order_by(Branch.id))
-    branches = result.scalars().all()
-    return [BranchOut.model_validate(b) for b in branches]
-
-
-@app.get("/api/admin/transactions", response_model=list[TransactionOut])
-async def list_transactions(
-    branch_id: Optional[int] = None,
-    limit: int = 100,
-    db: AsyncSession = Depends(get_db),
-):
-    query = select(Transaction).order_by(Transaction.created_at.desc()).limit(limit)
-    if branch_id is not None:
-        query = query.where(Transaction.branch_id == branch_id)
-    result = await db.execute(query)
-    transactions = result.scalars().all()
-    return [TransactionOut.model_validate(t) for t in transactions]
-
-
-@app.get("/health")
-async def health_check():
-    return {"status": "ok", "app": settings.APP_NAME}
+    return TransactionOut(message="Free coffee redeemed!", user=user_state(user))
