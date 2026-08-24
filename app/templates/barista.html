@@ -327,7 +327,9 @@
             });
             const data = await res.json();
             if (!res.ok || !data.ok) {
-              this.pinError = 'Incorrect PIN, try again';
+              this.pinError = res.status === 429
+                ? (data.detail || 'Too many attempts — try again later')
+                : 'Incorrect PIN, try again';
               this.pin = '';
               return;
             }
