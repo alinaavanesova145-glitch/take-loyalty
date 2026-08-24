@@ -109,7 +109,11 @@ class Employee(Base):
     branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), nullable=False)
     pin_code_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[EmployeeRole] = mapped_column(
-        Enum(EmployeeRole, name="employee_role"),
+        Enum(
+            EmployeeRole,
+            name="employee_role",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
         default=EmployeeRole.BARISTA,
         server_default=EmployeeRole.BARISTA.value,
         nullable=False,

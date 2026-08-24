@@ -1,0 +1,34 @@
+services:
+  api:
+    build: .
+    container_name: take_api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "8000"
+
+  bot:
+    build: .
+    container_name: take_bot
+    command: python -m app.services.bot
+    restart: unless-stopped
+    env_file: .env
+
+  caddy:
+    image: caddy:2
+    container_name: take_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+volumes:
+  caddy_data:
+  caddy_config:

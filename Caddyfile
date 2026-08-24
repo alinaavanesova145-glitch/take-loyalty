@@ -1,0 +1,3 @@
+takecoffeeandmore.duckdns.org {
+    reverse_proxy api:8000
+}

@@ -12,28 +12,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # --- Telegram ---
-    BOT_TOKEN: str
-    BOT_USERNAME: str = "take_loyalty_bot"
-
-    # --- Database ---
+    # Only used by seed.py (the sole consumer of this module) — kept minimal
+    # rather than declaring fields nothing reads.
     DATABASE_URL: str
-
-    # --- Security ---
-    QR_SECRET_KEY: str
     BARISTA_PIN: str = "1234"
-    INIT_DATA_MAX_AGE_SECONDS: int = 86400  # 24 hours
-
-    # --- Business rules ---
-    APP_NAME: str = "TAKE coffee&more Loyalty"
-    CASHBACK_RATE: float = 0.03
-    DEFAULT_BRANCH_ID: int = 1
-    DEFAULT_BRANCH_NAME: str = "TAKE #1"
-    DEFAULT_BRANCH_ADDRESS: str = "Central Branch"
-
-    # --- Web ---
-    BASE_URL: str = "http://localhost:8000"
-    DEV_MODE: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",
