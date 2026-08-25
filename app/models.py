@@ -86,6 +86,9 @@ class User(Base):
     free_coffees_redeemed: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0"
     )
+    # Set True after a broadcast send gets a 403 from Telegram (user blocked
+    # the bot) so future broadcasts skip them instead of retrying forever.
+    blocked_bot: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), nullable=False
     )
@@ -191,4 +194,25 @@ class Transaction(Base):
         return (
             f"<Transaction id={self.id} user_id={self.user_id} "
             f"type={self.type} points_change={self.points_change}>"
+        )
+
+
+class BroadcastLog(Base):
+    """Accountability trail for admin broadcasts — who sent what, when."""
+
+    __tablename__ = "broadcast_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    admin_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), nullable=False)
+    message: Mapped[str] = mapped_column(String(4096), nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
+    recipient_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    failed_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    admin: Mapped["Employee"] = relationship()
+
+    def __repr__(self) -> str:
+        return (
+            f"<BroadcastLog id={self.id} admin_id={self.admin_id} "
+            f"recipients={self.recipient_count} failed={self.failed_count}>"
         )

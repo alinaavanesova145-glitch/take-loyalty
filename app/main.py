@@ -11,6 +11,7 @@ TAKE coffee & more — FastAPI backend.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -24,18 +25,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models import (
     Base,
     Branch,
+    BroadcastLog,
     Employee,
     EmployeeRole,
     EmployeeSession,
@@ -62,6 +65,10 @@ SESSION_TTL_HOURS = 12
 QR_TOKEN_TTL_SECONDS = 90
 QR_TOKEN_CLOCK_SKEW_SECONDS = 5  # tolerate tokens up to this far in the future
 QR_TOKEN_SIG_LENGTH = 20  # truncated hex chars — plenty of entropy, keeps the QR small
+
+TELEGRAM_API_BASE = "https://api.telegram.org"
+BROADCAST_CONCURRENCY = 5  # simultaneous in-flight sendMessage calls
+BROADCAST_SEND_DELAY_SECONDS = 0.05  # extra spacing between sends, per worker
 
 logger = logging.getLogger("take_loyalty.api")
 
@@ -230,6 +237,16 @@ class AdminStatsOut(BaseModel):
     total_coffees_redeemed: int
     points_outstanding: int
     last_7_days: list[AdminDayStat]
+
+
+class BroadcastIn(BaseModel):
+    message: str
+
+
+class BroadcastOut(BaseModel):
+    sent: int
+    failed: int
+    blocked: int
 
 
 # --------------------------------------------------------------------------
@@ -640,3 +657,81 @@ async def admin_stats(
         points_outstanding=points_outstanding,
         last_7_days=last_7_days,
     )
+
+
+async def _send_broadcast_message(
+    client: httpx.AsyncClient, semaphore: asyncio.Semaphore, telegram_id: int, message: str
+) -> str:
+    """Returns 'sent', 'blocked' (Telegram 403 -- user blocked the bot), or
+    'failed' (anything else: network error, other non-200). Never raises --
+    one recipient's failure must not abort the rest of the broadcast."""
+    async with semaphore:
+        try:
+            response = await client.post(
+                f"{TELEGRAM_API_BASE}/bot{BOT_TOKEN}/sendMessage",
+                json={"chat_id": telegram_id, "text": message},
+                timeout=10.0,
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("Broadcast send failed (telegram_id=%s): %s", telegram_id, exc)
+            return "failed"
+        finally:
+            await asyncio.sleep(BROADCAST_SEND_DELAY_SECONDS)
+
+        if response.status_code == 200:
+            return "sent"
+        if response.status_code == 403:
+            return "blocked"
+        logger.warning(
+            "Broadcast send rejected (telegram_id=%s, status=%s): %s",
+            telegram_id,
+            response.status_code,
+            response.text,
+        )
+        return "failed"
+
+
+@app.post("/api/admin/broadcast", response_model=BroadcastOut)
+async def admin_broadcast(
+    payload: BroadcastIn,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    result = await db.execute(select(User).where(User.blocked_bot.is_(False)))
+    users = result.scalars().all()
+
+    semaphore = asyncio.Semaphore(BROADCAST_CONCURRENCY)
+    async with httpx.AsyncClient() as client:
+        outcomes = await asyncio.gather(
+            *[_send_broadcast_message(client, semaphore, u.telegram_id, message) for u in users]
+        )
+
+    sent = failed = blocked = 0
+    newly_blocked_ids: list[int] = []
+    for user, outcome in zip(users, outcomes):
+        if outcome == "sent":
+            sent += 1
+        elif outcome == "blocked":
+            blocked += 1
+            newly_blocked_ids.append(user.id)
+        else:
+            failed += 1
+
+    if newly_blocked_ids:
+        await db.execute(update(User).where(User.id.in_(newly_blocked_ids)).values(blocked_bot=True))
+
+    db.add(
+        BroadcastLog(
+            admin_id=admin.id,
+            message=message,
+            recipient_count=len(users),
+            failed_count=failed + blocked,
+        )
+    )
+    await db.commit()
+
+    return BroadcastOut(sent=sent, failed=failed, blocked=blocked)

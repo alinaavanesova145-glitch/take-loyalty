@@ -107,6 +107,48 @@
               </table>
             </div>
             <p class="text-[10px] text-[#9C978C]">Volume only — this points model doesn't capture bill amounts, so there's no revenue figure here.</p>
+
+            <p class="text-[11px] uppercase tracking-wide text-[#9C978C] mb-2 mt-6">Broadcast to customers</p>
+            <div class="bg-white/[0.045] border border-white/[0.09] rounded-2xl p-4">
+              <textarea x-model="broadcastMessage" rows="4" placeholder="Message to send to all customers…"
+                class="w-full bg-transparent border border-white/[0.09] rounded-xl p-3 text-sm text-[#F5F1EA] placeholder:text-[#9C978C]/60 focus:outline-none focus:ring-1 focus:ring-[#E2A85C] resize-none"></textarea>
+
+              <template x-if="!broadcastConfirming">
+                <button @click="startBroadcastConfirm()" :disabled="!broadcastMessage.trim() || broadcastSending"
+                  class="mt-3 w-full bg-[#E2A85C]/15 border border-[#E2A85C]/25 text-[#E2A85C] text-sm font-medium rounded-xl py-2.5 disabled:opacity-40">
+                  Send to all customers
+                </button>
+              </template>
+
+              <template x-if="broadcastConfirming">
+                <div class="mt-3">
+                  <p class="text-sm text-[#F5F1EA] mb-3">
+                    This will send to <span x-text="stats.total_customers"></span>
+                    customer<span x-text="stats.total_customers === 1 ? '' : 's'"></span> — are you sure?
+                  </p>
+                  <div class="flex gap-2">
+                    <button @click="broadcastConfirming = false" :disabled="broadcastSending"
+                      class="flex-1 border border-white/[0.09] text-sm rounded-xl py-2.5 text-[#9C978C] disabled:opacity-40">Cancel</button>
+                    <button @click="sendBroadcast()" :disabled="broadcastSending"
+                      class="flex-1 bg-[#E2A85C] text-[#0F0F12] text-sm font-medium rounded-xl py-2.5 disabled:opacity-40">
+                      <span x-text="broadcastSending ? 'Sending…' : 'Confirm send'"></span>
+                    </button>
+                  </div>
+                </div>
+              </template>
+
+              <template x-if="broadcastResult">
+                <p class="mt-3 text-sm text-[#9C978C]">
+                  Sent <span class="text-[#E2A85C]" x-text="broadcastResult.sent"></span>,
+                  failed <span x-text="broadcastResult.failed"></span>,
+                  blocked <span x-text="broadcastResult.blocked"></span>.
+                </p>
+              </template>
+
+              <template x-if="broadcastError">
+                <p class="mt-3 text-sm text-[#E87A5D]" x-text="broadcastError"></p>
+              </template>
+            </div>
           </div>
         </template>
 
@@ -127,6 +169,12 @@
         loading: false,
         loadError: '',
         appName: 'TAKE coffee&more',
+
+        broadcastMessage: '',
+        broadcastConfirming: false,
+        broadcastSending: false,
+        broadcastResult: null,
+        broadcastError: '',
 
         init() {
           const raw = document.documentElement.dataset.appName || '';
@@ -200,6 +248,40 @@
           sessionStorage.removeItem('take_admin_token');
           this.pin = '';
           this.pinError = message || '';
+        },
+
+        startBroadcastConfirm() {
+          if (!this.broadcastMessage.trim()) return;
+          this.broadcastResult = null;
+          this.broadcastError = '';
+          this.broadcastConfirming = true;
+        },
+
+        async sendBroadcast() {
+          this.broadcastSending = true;
+          this.broadcastError = '';
+          try {
+            const res = await fetch('/api/admin/broadcast', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + this.sessionToken,
+              },
+              body: JSON.stringify({ message: this.broadcastMessage.trim() }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              this.broadcastError = data.detail || 'Could not send broadcast.';
+              return;
+            }
+            this.broadcastResult = data;
+            this.broadcastMessage = '';
+          } catch (err) {
+            this.broadcastError = 'Network error sending broadcast.';
+          } finally {
+            this.broadcastSending = false;
+            this.broadcastConfirming = false;
+          }
         },
       };
     }
