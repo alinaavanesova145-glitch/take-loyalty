@@ -239,6 +239,38 @@
       return { Member: 'tier-badge-member', Silver: 'tier-badge-silver', Gold: 'tier-badge-gold' }[tier] || 'tier-badge-member';
     }
 
+    function drawQr(text) {
+      const el = document.getElementById('qrcode');
+      if (!el) return;
+      el.innerHTML = '';
+      new QRCode(el, {
+        text,
+        width: 176,
+        height: 176,
+        colorDark: '#121212',
+        colorLight: '#F5F5F3',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+    }
+
+    // QR is signed + 90s-TTL'd server-side (see get_qr_token / verify-qr in
+    // app/main.py) so a screenshotted code can't be reused indefinitely.
+    // Refreshed on load, on returning to the Card tab, and every 45s while
+    // that tab is visible — comfortably inside the 90s TTL to allow for
+    // scan/network lag, but only actually fetched while it matters.
+    let currentTab = 'card';
+    let currentTelegramId = null;
+
+    async function refreshQrToken() {
+      if (currentTab !== 'card' || !currentTelegramId) return;
+      try {
+        const res = await fetch(`/api/user/${currentTelegramId}/qr-token`);
+        if (!res.ok) return; // keep showing the last valid code rather than blanking it
+        const data = await res.json();
+        drawQr(`TAKE:${data.token}`);
+      } catch (e) { /* network hiccup — leave the last code showing */ }
+    }
+
     function render(data) {
       document.getElementById('user-name').textContent = data.first_name || 'Guest';
 
@@ -314,26 +346,28 @@
         ladder.appendChild(card);
       });
 
-      document.getElementById('qrcode').innerHTML = '';
-      new QRCode(document.getElementById('qrcode'), {
-        text: `TAKE:${data.telegram_id || 'demo'}`,
-        width: 176,
-        height: 176,
-        colorDark: '#121212',
-        colorLight: '#F5F5F3',
-        correctLevel: QRCode.CorrectLevel.M,
-      });
+      // Real customers: refreshQrToken() owns drawing the QR from a
+      // freshly signed, short-lived token (called right after render() in
+      // init(), then on an interval) — nothing static drawn here, so an
+      // unsigned code is never shown even momentarily. Demo/preview mode
+      // (no real Telegram context) has no backend token to fetch, so it
+      // keeps the old static placeholder.
+      if (typeof data.telegram_id !== 'number') {
+        drawQr(`TAKE:${data.telegram_id || 'demo'}`);
+      }
 
       lucide.createIcons();
     }
 
     function setTab(tab) {
+      currentTab = tab;
       ['card', 'history', 'rewards'].forEach((t) => {
         document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
       });
       document.querySelectorAll('.nav-btn').forEach((btn) => {
         btn.classList.toggle('active', btn.dataset.tab === tab);
       });
+      if (tab === 'card') refreshQrToken(); // don't wait up to 45s for a stale code to refresh
     }
 
     async function init() {
@@ -357,11 +391,15 @@
           if (txRes.ok) transactions = await txRes.json();
         } catch (txErr) { /* leave transactions empty */ }
 
+        currentTelegramId = telegramId; // real id — safe for refreshQrToken() to start fetching
         render({ ...state, telegram_id: telegramId, transactions });
+        await refreshQrToken(); // draw the first real signed code immediately
       } catch (e) {
         render({ ...DEMO_DATA, first_name: firstName, telegram_id: telegramId || 'demo' });
       }
     }
+
+    setInterval(refreshQrToken, 45000);
 
     init();
   </script>

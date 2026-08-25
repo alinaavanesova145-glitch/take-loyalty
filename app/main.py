@@ -12,6 +12,8 @@ TAKE coffee & more — FastAPI backend.
 from __future__ import annotations
 
 import hashlib
+import hmac
+import logging
 import os
 import secrets
 import time
@@ -51,10 +53,17 @@ DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/take_loyalty"
 )
 CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",")]
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+QR_SIGNING_SECRET = os.environ.get("QR_SIGNING_SECRET", "")
 
 POINTS_PER_CUP = 100
 REWARD_THRESHOLD = 800  # points needed for one free coffee (8 cups)
 SESSION_TTL_HOURS = 12
+QR_TOKEN_TTL_SECONDS = 90
+QR_TOKEN_CLOCK_SKEW_SECONDS = 5  # tolerate tokens up to this far in the future
+QR_TOKEN_SIG_LENGTH = 20  # truncated hex chars — plenty of entropy, keeps the QR small
+
+logger = logging.getLogger("take_loyalty.api")
 
 engine = create_async_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
@@ -177,6 +186,11 @@ class VerifyQrIn(BaseModel):
     qr_payload: str
 
 
+class QrTokenOut(BaseModel):
+    token: str
+    issued_at: int
+
+
 class VerifyQrOut(BaseModel):
     user: UserStateOut
 
@@ -228,6 +242,18 @@ def hash_pin(pin: str) -> str:
     (admin tooling / DB seed script) using this same function."""
     salt = os.environ.get("PIN_SALT", "take-coffee-static-salt")
     return hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
+
+
+def _qr_signature(telegram_id: int, issued_at: int) -> str:
+    message = f"{telegram_id}.{issued_at}"
+    return hmac.new(
+        QR_SIGNING_SECRET.encode(), message.encode(), hashlib.sha256
+    ).hexdigest()[:QR_TOKEN_SIG_LENGTH]
+
+
+def sign_qr_token(telegram_id: int, issued_at: int) -> str:
+    """'{telegram_id}.{issued_at}.{sig}' — the QR payload is 'TAKE:' + this."""
+    return f"{telegram_id}.{issued_at}.{_qr_signature(telegram_id, issued_at)}"
 
 
 # --------------------------------------------------------------------------
@@ -353,6 +379,15 @@ async def get_user_transactions(
     ]
 
 
+@app.get("/api/user/{telegram_id}/qr-token", response_model=QrTokenOut)
+async def get_qr_token(telegram_id: int):
+    """Short-lived signed token for this customer's QR code. Pure signing —
+    no DB round trip needed, and none of the endpoints that consume it
+    (verify-qr) need this one to have run first."""
+    issued_at = int(time.time())
+    return QrTokenOut(token=sign_qr_token(telegram_id, issued_at), issued_at=issued_at)
+
+
 # --------------------------------------------------------------------------
 # Barista endpoints
 # --------------------------------------------------------------------------
@@ -404,13 +439,48 @@ async def verify_qr(
     db: AsyncSession = Depends(get_db),
     employee: Employee = Depends(get_current_employee),
 ):
-    # Expected payload format: "TAKE:{telegram_id}"
+    # Two accepted formats, disambiguated by shape:
+    #   "TAKE:{telegram_id}.{issued_at}.{sig}"  — real camera scan, signed
+    #     and 90s-TTL'd (see sign_qr_token / get_qr_token).
+    #   "TAKE:{telegram_id}"                     — manual-entry fallback for
+    #     camera failures. Deliberately kept lower-trust (no signature, no
+    #     expiry) per product decision; logged distinctly below so it's
+    #     auditable which scans went through the unsigned path.
     raw = payload.qr_payload.strip()
     if not raw.startswith("TAKE:"):
         raise HTTPException(status_code=400, detail="Unrecognized QR code")
-    try:
-        telegram_id = int(raw.removeprefix("TAKE:"))
-    except ValueError:
+    parts = raw.removeprefix("TAKE:").split(".")
+
+    if len(parts) == 3:
+        telegram_id_str, issued_at_str, sig = parts
+        try:
+            telegram_id = int(telegram_id_str)
+            issued_at = int(issued_at_str)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Unrecognized QR code")
+
+        expected_sig = _qr_signature(telegram_id, issued_at)
+        if not hmac.compare_digest(expected_sig, sig):
+            raise HTTPException(status_code=400, detail="Invalid QR code")
+
+        age = int(time.time()) - issued_at
+        if age > QR_TOKEN_TTL_SECONDS:
+            raise HTTPException(
+                status_code=400, detail="QR code expired, ask customer to refresh"
+            )
+        if age < -QR_TOKEN_CLOCK_SKEW_SECONDS:
+            raise HTTPException(status_code=400, detail="QR code timestamp is in the future")
+    elif len(parts) == 1:
+        try:
+            telegram_id = int(parts[0])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Unrecognized QR code")
+        logger.warning(
+            "Manual/unsigned QR entry: telegram_id=%s employee_id=%s",
+            telegram_id,
+            employee.id,
+        )
+    else:
         raise HTTPException(status_code=400, detail="Unrecognized QR code")
 
     user = await get_or_create_user(db, telegram_id)
